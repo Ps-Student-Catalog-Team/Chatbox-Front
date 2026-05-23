@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>网管安全中心控制台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        ::-webkit-scrollbar { display: none; }
+        .tab-btn.active { background-color: #f3f4f6; color: #111827; font-weight: 700; }
+        #toast { transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+    </style>
+</head>
+<body class="bg-slate-50 h-screen font-sans antialiased relative overflow-hidden select-none">
+
+    <div id="toast" style="transform: translate(-50%, -100px); opacity: 0;" class="fixed top-6 left-1/2 z-50 text-white text-xs font-semibold px-6 py-3 rounded-full shadow-2xl flex items-center bg-gray-900 transition-all duration-300">
+        <span id="toastText">提示</span>
+    </div>
+
+    <div id="loginScreen" class="absolute inset-0 bg-slate-900 z-50 flex items-center justify-center p-4 transition-all duration-500">
+        <div class="bg-white/10 backdrop-blur-xl border border-white/10 p-8 rounded-[28px] shadow-2xl w-full max-w-sm space-y-6 text-center">
+            <div>
+                <div class="w-12 h-12 bg-red-500/20 text-red-400 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                </div>
+                <h2 class="text-xl font-bold text-white tracking-tight">安全中心验证舱</h2>
+                <p class="text-xs text-slate-400 mt-1">请输入管理员专用通信密钥解锁系统</p>
+            </div>
+            <input type="password" id="secretInput" placeholder="输入核心通行密钥..." class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white font-mono placeholder-slate-500 text-center focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition">
+            <button onclick="tryAdminLogin()" class="w-full bg-red-600 hover:bg-red-500 text-white font-semibold text-sm rounded-xl py-3 shadow-lg shadow-red-600/20 active:scale-95 transition">验证并授权接入</button>
+        </div>
+    </div>
+
+    <div id="adminDashboard" class="h-full flex flex-col opacity-0 pointer-events-none transition-all duration-500">
+        
+        <header class="bg-white border-b border-gray-100 px-8 py-4 flex justify-between items-center shadow-sm shrink-0">
+            <div>
+                <h1 class="text-lg font-black tracking-tight text-gray-900 flex items-center">
+                    <span class="w-2.5 h-2.5 bg-green-500 rounded-full mr-2 animate-pulse"></span>
+                    网管局域网安全哨所 · 控制台
+                </h1>
+                <p class="text-[11px] text-gray-400 mt-0.5">实时监视机房数据报文、连接链路及言论合规性</p>
+            </div>
+            
+            <div class="flex space-x-1 bg-gray-100 p-1 rounded-xl text-xs text-gray-500 font-medium">
+                <button onclick="switchTab('users')" id="tabBtn-users" class="tab-btn active px-4 py-2 rounded-lg transition">👥 用户追踪</button>
+                <button onclick="switchTab('messages')" id="tabBtn-messages" class="tab-btn px-4 py-2 rounded-lg transition">💬 消息流审核</button>
+                <button onclick="switchTab('system')" id="tabBtn-system" class="tab-btn px-4 py-2 rounded-lg transition">⚙️ 全局强控</button>
+            </div>
+        </header>
+
+        <main class="flex-1 overflow-y-auto p-6 max-w-4xl w-full mx-auto space-y-6">
+            
+            <section id="panel-users" class="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden transition-all">
+                <div class="px-6 py-4 bg-gray-50/50 border-b border-gray-100 flex justify-between items-center">
+                    <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">局域网账号及物理IP映射表</span>
+                    <button onclick="refreshUsers()" class="text-xs text-blue-600 hover:underline font-bold">手动清洗链路</button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-gray-100 text-[11px] font-bold text-gray-400 bg-white">
+                                <th class="px-6 py-3">账号状态</th>
+                                <th class="px-6 py-3">用户名</th>
+                                <th class="px-6 py-3">对端局域网 IP (过滤169)</th>
+                                <th class="px-6 py-3 text-right">制裁权限</th>
+                            </tr>
+                        </thead>
+                        <tbody id="userTableBody" class="divide-y divide-gray-50 text-xs">
+                            <tr><td colspan="4" class="py-12 text-center text-gray-400">正在搜集局域网节点...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="panel-messages" class="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden hidden">
+                <div class="px-6 py-4 bg-gray-50/50 border-b border-gray-100 flex justify-between items-center">
+                    <span class="text-xs font-bold text-gray-500 uppercase tracking-wider">实时公屏报文审计 (近100条)</span>
+                    <button onclick="refreshMessages()" class="text-xs text-blue-600 hover:underline font-bold">刷新报文</button>
+                </div>
+                <div class="divide-y divide-gray-50 max-h-[500px] overflow-y-auto" id="messageStreamBody">
+                    </div>
+            </section>
+
+            <section id="panel-system" class="space-y-6 hidden">
+                <div class="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm flex justify-between items-center">
+                    <div>
+                        <h3 class="text-sm font-bold text-gray-900">网管一键全局禁言 (Global Mute)</h3>
+                        <p class="text-xs text-gray-400 mt-1">开启后除系统公告外，所有人的会话通道将被瞬间上锁拦截</p>
+                    </div>
+                    <button id="muteToggleBtn" onclick="toggleGlobalMute()" class="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-5 py-3 rounded-xl transition shadow">
+                        切换全局状态
+                    </button>
+                </div>
+                
+                <div class="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm space-y-4">
+                    <div>
+                        <h3 class="text-sm font-bold text-gray-900">强袭式全场大喇叭广播</h3>
+                        <p class="text-xs text-gray-400 mt-1">以“📢 系统公告”名义下发不容拒绝的指令通知，直达所有人网页</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <input type="text" id="broadcastInput" placeholder="输入广播指令内容，例如：下课请自觉关闭微机电源..." class="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition">
+                        <button onclick="sendSystemBroadcast()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-6 rounded-xl shadow-lg shadow-blue-600/10 active:scale-95 transition">高能广播</button>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <script>
+        let currentSecret = "";
+
+        function showToast(text, isError = false) {
+            const toast = document.getElementById('toast');
+            toast.innerText = text;
+            toast.className = `fixed top-6 left-1/2 z-50 text-white text-xs font-bold px-6 py-3 rounded-full shadow-2xl flex items-center bg-${isError?'red':'green'}-500`;
+            toast.style.transform = "translate(-50%, 0px)";
+            toast.style.opacity = "1";
+            setTimeout(() => {
+                toast.style.transform = "translate(-50%, -100px)";
+                toast.style.opacity = "0";
+            }, 2000);
+        }
+
+        // 🔐 独立登录验证逻辑
+        async function tryAdminLogin() {
+            const secret = document.getElementById('secretInput').value.trim();
+            if (!secret) return showToast("请输入通过密码！", true);
+            
+            try {
+                const response = await fetch(`/api/admin/users?secret=${encodeURIComponent(secret)}`);
+                if (!response.ok) throw new Error();
+                
+                // 验证成功，解锁核心后台
+                currentSecret = secret;
+                document.getElementById('loginScreen').classList.add('translate-y-full', 'opacity-0');
+                const dash = document.getElementById('adminDashboard');
+                dash.classList.remove('opacity-0', 'pointer-events-none');
+                
+                showToast("接入网络成功，控制面板已解锁！");
+                refreshUsers();
+                updateSystemStatus();
+            } catch(e) {
+                showToast("密钥校验未通过，拒绝访问！", true);
+            }
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`tabBtn-${tabName}`).classList.add('active');
+            
+            ['users', 'messages', 'system'].forEach(p => {
+                document.getElementById(`panel-${p}`).classList.add('hidden');
+            });
+            document.getElementById(`panel-${tabName}`).classList.remove('hidden');
+
+            if (tabName === 'users') refreshUsers();
+            if (tabName === 'messages') refreshMessages();
+            if (tabName === 'system') updateSystemStatus();
+        }
+
+        // 获取并渲染包含真实 IP 映射的用户列表
+        async function refreshUsers() {
+            try {
+                const r = await fetch(`/api/admin/users?secret=${encodeURIComponent(currentSecret)}`);
+                const data = await r.json();
+                const tbody = document.getElementById('userTableBody');
+                
+                if(data.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="4" class="py-8 text-center text-gray-400">目前暂无注册终端</td></tr>`;
+                    return;
+                }
+                
+                tbody.innerHTML = data.map(u => `
+                    <tr class="hover:bg-gray-50/50 transition">
+                        <td class="px-6 py-4">
+                            ${u.is_online ? '<span class="inline-flex items-center text-green-600 font-bold"><span class="w-1.5 h-1.5 bg-green-500 rounded-full mr-1.5 animate-pulse"></span>在线</span>' : '<span class="text-gray-400">离线</span>'}
+                        </td>
+                        <td class="px-6 py-4 font-bold text-gray-900">${escapeHtml(u.username)}</td>
+                        <td class="px-6 py-4 font-mono text-gray-500">${u.last_ip}</td>
+                        <td class="px-6 py-4 text-right">
+                            <button onclick="banUser('${u.username}')" class="bg-red-50 hover:bg-red-100 text-red-600 font-bold px-2.5 py-1.5 rounded-lg transition active:scale-95">强行断网销户</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch(e) { showToast("拉取用户链失败", true); }
+        }
+
+        async function banUser(name) {
+            if(!confirm(`确认将该终端 [${name}] 连根拔起吗？\n该操作会彻底碎裂其本地存储账号，并切断当前网络活动！`)) return;
+            try {
+                await fetch('/api/admin/delete-user', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ secret: currentSecret, username: name })
+                });
+                showToast(`已成功强制清除终端: ${name}`);
+                refreshUsers();
+            } catch(e) { showToast("制裁未成功下发", true); }
+        }
+
+        // 拓展功能：获取全部聊天包审计
+        async function refreshMessages() {
+            try {
+                const r = await fetch(`/api/admin/messages?secret=${encodeURIComponent(currentSecret)}`);
+                const data = await r.json();
+                const container = document.getElementById('messageStreamBody');
+                
+                if(data.length === 0) {
+                    container.innerHTML = `<div class="p-8 text-center text-gray-400">大厅数据缓存流为空</div>`;
+                    return;
+                }
+                
+                container.innerHTML = data.map(m => `
+                    <div class="px-6 py-3 flex justify-between items-center hover:bg-gray-50/50 transition">
+                        <div class="space-y-0.5 max-w-[80%]">
+                            <span class="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">${escapeHtml(m.sender)}</span>
+                            <p class="text-gray-800 break-all font-medium">${escapeHtml(m.content)}</p>
+                        </div>
+                        <button onclick="deleteMsg(${m.ID})" class="text-xs text-gray-400 hover:text-red-500 font-semibold transition">指令撤回</button>
+                    </div>
+                `).join('');
+            } catch(e) { showToast("拉取报文流失败", true); }
+        }
+
+        async function deleteMsg(id) {
+            try {
+                await fetch('/api/admin/delete-message', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ secret: currentSecret, id: id })
+                });
+                showToast("单条垃圾报文已被强制拦截销毁！");
+                refreshMessages();
+            } catch(e) {}
+        }
+
+        // 拓展功能：更新控制状态
+        async function updateSystemStatus() {
+            try {
+                const r = await fetch(`/api/admin/status?secret=${encodeURIComponent(currentSecret)}`);
+                const data = await r.json();
+                const btn = document.getElementById('muteToggleBtn');
+                if (data.global_mute) {
+                    btn.innerText = "🔊 解除全场禁言";
+                    btn.className = "bg-red-500 hover:bg-red-400 text-white font-bold text-xs px-5 py-3 rounded-xl transition shadow";
+                } else {
+                    btn.innerText = "🔇 开启全场禁言";
+                    btn.className = "bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-5 py-3 rounded-xl transition shadow";
+                }
+            } catch(e) {}
+        }
+
+        async function toggleGlobalMute() {
+            try {
+                const r = await fetch(`/api/admin/toggle-mute?secret=${encodeURIComponent(currentSecret)}`);
+                const data = await r.json();
+                showToast(data.global_mute ? "🔇 全场安静！禁言指令已广播全域！" : "🔊 禁言解除，通道恢复正常运作");
+                updateSystemStatus();
+            } catch(e) {}
+        }
+
+        async function sendSystemBroadcast() {
+            const input = document.getElementById('broadcastInput');
+            const txt = input.value.trim();
+            if(!txt) return;
+            try {
+                await fetch('/api/admin/broadcast', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ secret: currentSecret, content: txt })
+                });
+                showToast("大喇叭系统指令成功传达各处终端！");
+                input.value = "";
+            } catch(e) {}
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        // 支持敲击回车直接登入
+        document.getElementById('secretInput').onkeydown = (e) => { if(e.key === 'Enter') tryAdminLogin(); };
+    </script>
+</body>
+</html>
