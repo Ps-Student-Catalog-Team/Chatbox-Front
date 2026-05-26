@@ -1,323 +1,637 @@
 package main
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
-	"os/exec"
-	"runtime"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // 纯 Go 实现的 SQLite 驱动，免去 CGO 编译烦恼
 )
 
-const AdminSecret = "admin666"
+// --- 数据结构定义 ---
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+type User struct {
+	Username  string   `json:"username"`
+	AvatarURL string   `json:"avatar_url"`
+	IsOnline  bool     `json:"is_online"`
+	LastIP    string   `json:"last_ip"`
 }
 
-type ClientRequest struct {
-	Action   string `json:"action"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Content  string `json:"content"`
+type Message struct {
+	ID         int64  `json:"id"`
+	TargetType string `json:"target_type"` // "public", "group", "private"
+	TargetID   string `json:"target_id"`   // "global", groupID, 或 username
+	Sender     string `json:"sender"`
+	Content    string `json:"content"`
+	Timestamp  int64  `json:"timestamp"`
+	AvatarURL  string `json:"avatar_url"`
 }
 
-type ServerResponse struct {
-	Type    string `json:"type"`
+type AdminMessage struct {
+	ID      int64  `json:"ID"` // 适配前端大写 ID 契约
 	Sender  string `json:"sender"`
 	Content string `json:"content"`
 }
 
-type Hub struct {
-	clients    map[*websocket.Conn]string
-	broadcast  chan ServerResponse
-	mutex      sync.Mutex
-	db         *sql.DB
-	globalMute bool
+// --- 全局状态管理 ---
+
+var (
+	db           *sql.DB
+	clients      = make(map[string]*websocket.Conn) // 仅在线路由维护在内存中
+	globalMute   = false
+	stateMutex   sync.RWMutex
+	adminSecret  = "admin666" // 管理员通行密钥
+
+	upgrader = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
+)
+
+func main() {
+	// 1. 初始化本地文件目录
+	if err := os.MkdirAll("./uploads", 0755); err != nil {
+		log.Fatalf("无法创建上传目录: %v", err)
+	}
+
+	// 2. 初始化数据库
+	initDB()
+	defer db.Close()
+
+	// 3. 静态资源托管
+	http.Handle("/", http.FileServer(http.Dir("./")))
+	http.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("./uploads"))))
+
+	// 4. 路由注册
+	http.HandleFunc("/ws", handleWebSocket)
+	http.HandleFunc("/api/upload", handleUpload)
+	http.HandleFunc("/api/reset-password", handleResetPassword)
+
+	// 用户接口
+	http.HandleFunc("/api/messages", handleGetMessages)
+
+	// 管理员控制台 API
+	http.HandleFunc("/api/admin/users", handleAdminUsers)
+	http.HandleFunc("/api/admin/messages", handleAdminMessages)
+	http.HandleFunc("/api/admin/delete-user", handleAdminDeleteUser)
+	http.HandleFunc("/api/admin/delete-message", handleAdminDeleteMessage)
+	http.HandleFunc("/api/admin/status", handleAdminStatus)
+	http.HandleFunc("/api/admin/toggle-mute", handleAdminToggleMute)
+	http.HandleFunc("/api/admin/broadcast", handleAdminBroadcast)
+
+	port := ":40001"
+	fmt.Printf("局域网聊天室已就绪，启动于 %s ...\n", port)
+	if err := http.ListenAndServe(port, nil); err != nil {
+		log.Fatalf("服务器启动失败: %v", err)
+	}
 }
 
-func getClientIP(r *http.Request) string {
-	for _, header := range []string{"X-Forwarded-For", "X-Real-IP"} {
-		if ip := r.Header.Get(header); ip != "" {
-			addresses := strings.Split(ip, ",")
-			trimmedIP := strings.TrimSpace(addresses[0])
-			if trimmedIP != "" && !strings.HasPrefix(trimmedIP, "169.254") {
-				return trimmedIP
-			}
-		}
-	}
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+// --- 数据库初始化与建表 ---
+
+func initDB() {
+	var err error
+	db, err = sql.Open("sqlite", "./chat.db")
 	if err != nil {
-		ip = r.RemoteAddr
+		log.Fatalf("无法打开数据库文件: %v", err)
 	}
-	if strings.HasPrefix(ip, "169.254") {
-		return "局域网未知(169过滤)"
-	}
-	if ip == "::1" || ip == "127.0.0.1" {
-		return "服务器本机"
-	}
+
+	// 创建用户表
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS users (
+		username TEXT PRIMARY KEY,
+		password TEXT NOT NULL,
+		avatar_url TEXT DEFAULT '',
+		last_ip TEXT DEFAULT ''
+	);`)
+	if err != nil { log.Fatalf("创建users表失败: %v", err) }
+
+	// 创建好友关系表 (双向存储)
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS friends (
+		username TEXT,
+		friend_username TEXT,
+		PRIMARY KEY (username, friend_username)
+	);`)
+	if err != nil { log.Fatalf("创建friends表失败: %v", err) }
+
+	// 创建群组表
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS groups (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL
+	);`)
+	if err != nil { log.Fatalf("创建groups表失败: %v", err) }
+
+	// 创建群成员映射表
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS group_members (
+		group_id INTEGER,
+		username TEXT,
+		PRIMARY KEY (group_id, username)
+	);`)
+	if err != nil { log.Fatalf("创建group_members表失败: %v", err) }
+
+	// 创建消息历史表
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS messages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		target_type TEXT,
+		target_id TEXT,
+		sender TEXT,
+		content TEXT,
+		timestamp INTEGER,
+		avatar_url TEXT
+	);`)
+	if err != nil { log.Fatalf("创建messages表失败: %v", err) }
+
+	// 预置初始测试账号
+	_, _ = db.Exec("INSERT OR IGNORE INTO users (username, password) VALUES ('admin', '123')")
+	_, _ = db.Exec("INSERT OR IGNORE INTO users (username, password) VALUES ('test01', '123')")
+}
+
+// --- 辅助校验函数 ---
+
+func getIP(r *http.Request) string {
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil { return r.RemoteAddr }
+	if ip == "::1" { return "127.0.0.1" }
 	return ip
 }
 
-func main() {
-	db, err := sql.Open("sqlite", "./chat.db")
-	if err != nil {
-		log.Fatal(err)
+func checkAdminSecret(r *http.Request) bool {
+	secret := r.URL.Query().Get("secret")
+	if secret == adminSecret { return true }
+	if r.Method == http.MethodPost {
+		var body map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if s, ok := body["secret"].(string); ok && s == adminSecret { return true }
 	}
-	defer db.Close()
-
-	db.Exec(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT, last_ip TEXT DEFAULT '未知');`)
-	db.Exec(`CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, sender TEXT, content TEXT);`)
-	db.Exec(`ALTER TABLE users ADD COLUMN last_ip TEXT DEFAULT '未知';`)
-
-	hub := &Hub{
-		clients:   make(map[*websocket.Conn]string),
-		broadcast: make(chan ServerResponse),
-		db:        db,
-	}
-	go hub.run()
-
-	http.Handle("/", http.FileServer(http.Dir("./frontend")))
-	http.HandleFunc("/ws", hub.handleWebsocket)
-
-	// ==========================================
-	// 🛠️ 后台控制中心 API 矩阵
-	// ==========================================
-
-	http.HandleFunc("/api/admin/users", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Query().Get("secret") != AdminSecret {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-
-		onlineMap := make(map[string]bool)
-		hub.mutex.Lock()
-		for _, name := range hub.clients {
-			onlineMap[name] = true
-		}
-		hub.mutex.Unlock()
-
-		rows, err := db.Query("SELECT id, username, last_ip FROM users ORDER BY id DESC")
-		if err != nil { return }
-		defer rows.Close()
-
-		type UserInfo struct {
-			ID       int    `json:"id"`
-			Username string `json:"username"`
-			LastIP   string `json:"last_ip"`
-			IsOnline bool   `json:"is_online"`
-		}
-		var list []UserInfo
-		for rows.Next() {
-			var u UserInfo
-			rows.Scan(&u.ID, &u.Username, &u.LastIP)
-			u.IsOnline = onlineMap[u.Username]
-			list = append(list, u)
-		}
-		json.NewEncoder(w).Encode(list)
-	})
-
-	http.HandleFunc("/api/admin/delete-user", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.Method != "POST" { return }
-		var req struct { Secret string `json:"secret"`; Username string `json:"username"` }
-		json.NewDecoder(r.Body).Decode(&req)
-		if req.Secret != AdminSecret { w.WriteHeader(http.StatusUnauthorized); return }
-
-		db.Exec("DELETE FROM users WHERE username = ?", req.Username)
-		db.Exec("DELETE FROM messages WHERE sender = ?", req.Username)
-
-		hub.mutex.Lock()
-		for conn, name := range hub.clients {
-			if name == req.Username {
-				conn.WriteJSON(ServerResponse{Type: "auth_err", Content: "❌ 你的账号已被管理员强制封禁并销户！"})
-				conn.Close()
-				delete(hub.clients, conn)
-				break
-			}
-		}
-		hub.mutex.Unlock()
-		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
-	})
-
-	http.HandleFunc("/api/admin/toggle-mute", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Query().Get("secret") != AdminSecret { w.WriteHeader(http.StatusUnauthorized); return }
-
-		hub.mutex.Lock()
-		hub.globalMute = !hub.globalMute
-		isMuted := hub.globalMute
-		hub.mutex.Unlock()
-
-		if isMuted {
-			hub.broadcast <- ServerResponse{Type: "msg", Sender: "📢 系统通知", Content: "管理员已开启全场禁言！"}
-		} else {
-			hub.broadcast <- ServerResponse{Type: "msg", Sender: "📢 系统通知", Content: "全场禁言已解除。"}
-		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"global_mute": isMuted})
-	})
-
-	http.HandleFunc("/api/admin/broadcast", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.Method != "POST" { return }
-		var req struct { Secret string `json:"secret"`; Content string `json:"content"` }
-		json.NewDecoder(r.Body).Decode(&req)
-		if req.Secret != AdminSecret { w.WriteHeader(http.StatusUnauthorized); return }
-
-		if req.Content != "" {
-			hub.broadcast <- ServerResponse{Type: "msg", Sender: "📢 系统公告", Content: req.Content}
-			db.Exec("INSERT INTO messages (sender, content) VALUES (?, ?)", "📢 系统公告", req.Content)
-		}
-		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
-	})
-
-	http.HandleFunc("/api/admin/messages", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Query().Get("secret") != AdminSecret { w.WriteHeader(http.StatusUnauthorized); return }
-
-		rows, _ := db.Query("SELECT id, sender, content FROM messages ORDER BY id DESC LIMIT 100")
-		defer rows.Close()
-
-		type MsgInfo struct { ID int `json:"id"`; Sender string `json:"sender"`; Content string `json:"content"` }
-		var msgs []MsgInfo
-		for rows.Next() {
-			var m MsgInfo
-			rows.Scan(&m.ID, &m.Sender, &m.Content)
-			msgs = append(msgs, m)
-		}
-		json.NewEncoder(w).Encode(msgs)
-	})
-
-	http.HandleFunc("/api/admin/delete-message", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.Method != "POST" { return }
-		var req struct { Secret string `json:"secret"`; ID int `json:"id"` }
-		json.NewDecoder(r.Body).Decode(&req)
-		if req.Secret != AdminSecret { w.WriteHeader(http.StatusUnauthorized); return }
-
-		db.Exec("DELETE FROM messages WHERE id = ?", req.ID)
-		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
-	})
-
-	http.HandleFunc("/api/admin/status", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Query().Get("secret") != AdminSecret { w.WriteHeader(http.StatusUnauthorized); return }
-		hub.mutex.Lock()
-		defer hub.mutex.Unlock()
-		json.NewEncoder(w).Encode(map[string]interface{}{"global_mute": hub.globalMute})
-	})
-
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		fmt.Println("====================================================")
-		fmt.Println("👉 聊天大厅: http://localhost:8080")
-		fmt.Println("👉 独立登录控制台: http://localhost:8080/admin.html")
-		fmt.Println("====================================================")
-		openBrowser("http://localhost:8080/admin.html")
-	}()
-
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	return false
 }
 
-func (h *Hub) handleWebsocket(w http.ResponseWriter, r *http.Request) {
+// --- WebSocket 核心多路复用调度 ---
+
+func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil { return }
-
-	clientIP := getClientIP(r)
+	clientIP := getIP(r)
+	var authenticatedUser string
 
 	defer func() {
-		h.mutex.Lock()
-		delete(h.clients, conn)
-		h.mutex.Unlock()
 		conn.Close()
+		if authenticatedUser != "" {
+			stateMutex.Lock()
+			delete(clients, authenticatedUser)
+			stateMutex.Unlock()
+		}
 	}()
 
 	for {
 		_, msgBytes, err := conn.ReadMessage()
 		if err != nil { break }
 
-		var req ClientRequest
-		if err := json.Unmarshal(msgBytes, &req); err != nil { continue }
+		var payload map[string]interface{}
+		if err := json.Unmarshal(msgBytes, &payload); err != nil { continue }
 
-		switch req.Action {
-		case "register":
-			_, err := h.db.Exec("INSERT INTO users (username, password, last_ip) VALUES (?, ?, ?)", req.Username, req.Password, clientIP)
-			if err != nil {
-				conn.WriteJSON(ServerResponse{Type: "auth_err", Content: "❌ 该用户名已被注册！"})
-			} else {
-				h.mutex.Lock()
-				h.clients[conn] = req.Username
-				h.mutex.Unlock()
-				conn.WriteJSON(ServerResponse{Type: "auth_ok", Content: "成功", Sender: req.Username})
+		action, _ := payload["action"].(string)
 
-				rows, _ := h.db.Query("SELECT sender, content FROM messages ORDER BY id DESC LIMIT 40")
-				var msgs []ServerResponse
-				for rows.Next() {
-					var m ServerResponse; m.Type = "msg"; rows.Scan(&m.Sender, &m.Content)
-					msgs = append(msgs, m)
-				}
-				rows.Close()
-				for i := len(msgs) - 1; i >= 0; i-- { conn.WriteJSON(msgs[i]) }
+		switch action {
+		case "login", "register":
+			user, _ := payload["username"].(string)
+			pwd, _ := payload["password"].(string)
+			if user == "" || pwd == "" {
+				conn.WriteJSON(map[string]string{"type": "auth_err", "content": "参数不能为空"})
+				continue
 			}
 
-		case "login":
-			var savedPwd string
-			err := h.db.QueryRow("SELECT password FROM users WHERE username = ?", req.Username).Scan(&savedPwd)
-			if err != nil || savedPwd != req.Password {
-				conn.WriteJSON(ServerResponse{Type: "auth_err", Content: "❌ 账号或密码输入有误！"})
-			} else {
-				h.db.Exec("UPDATE users SET last_ip = ? WHERE username = ?", clientIP, req.Username)
+			var dbPwd, dbAvatar string
+			err := db.QueryRow("SELECT password, avatar_url FROM users WHERE username = ?", user).Scan(&dbPwd, &dbAvatar)
 
-				h.mutex.Lock()
-				h.clients[conn] = req.Username
-				h.mutex.Unlock()
-				conn.WriteJSON(ServerResponse{Type: "auth_ok", Sender: req.Username})
-
-				rows, _ := h.db.Query("SELECT sender, content FROM messages ORDER BY id DESC LIMIT 40")
-				var msgs []ServerResponse
-				for rows.Next() {
-					var m ServerResponse; m.Type = "msg"; rows.Scan(&m.Sender, &m.Content)
-					msgs = append(msgs, m)
-				}
-				rows.Close()
-				for i := len(msgs) - 1; i >= 0; i-- { conn.WriteJSON(msgs[i]) }
-			}
-
-		case "msg":
-			h.mutex.Lock()
-			user := h.clients[conn]
-			isMuted := h.globalMute
-			h.mutex.Unlock()
-
-			if user != "" {
-				if isMuted {
-					conn.WriteJSON(ServerResponse{Type: "auth_err", Content: "当前处于禁言状态！"})
+			if action == "register" {
+				if err == nil {
+					conn.WriteJSON(map[string]string{"type": "auth_err", "content": "该账号已被注册"})
 					continue
 				}
-				h.db.Exec("INSERT INTO messages (sender, content) VALUES (?, ?)", user, req.Content)
-				h.broadcast <- ServerResponse{Type: "msg", Sender: user, Content: req.Content}
+				_, err = db.Exec("INSERT INTO users (username, password, last_ip) VALUES (?, ?, ?)", user, pwd, clientIP)
+				if err != nil {
+					conn.WriteJSON(map[string]string{"type": "auth_err", "content": "注册失败，请稍后再试"})
+					continue
+				}
+			} else { // 登录
+				if err == sql.ErrNoRows || dbPwd != pwd {
+					conn.WriteJSON(map[string]string{"type": "auth_err", "content": "账号或密码错误"})
+					continue
+				}
+				_, _ = db.Exec("UPDATE users SET last_ip = ? WHERE username = ?", clientIP, user)
 			}
+
+			stateMutex.Lock()
+			authenticatedUser = user
+			clients[user] = conn
+			stateMutex.Unlock()
+
+			conn.WriteJSON(map[string]string{"type": "auth_ok", "avatar_url": dbAvatar})
+
+		case "sync":
+			if authenticatedUser == "" { continue }
+			sendSyncData(authenticatedUser)
+
+		case "update_avatar":
+			if authenticatedUser == "" { continue }
+			content, _ := payload["content"].(string)
+			_, err := db.Exec("UPDATE users SET avatar_url = ? WHERE username = ?", content, authenticatedUser)
+			if err == nil {
+				conn.WriteJSON(map[string]string{"type": "avatar_ok", "avatar_url": content})
+			}
+
+		case "add_friend":
+			if authenticatedUser == "" { continue }
+			target, _ := payload["target_user"].(string)
+			if target == authenticatedUser { continue }
+
+			// 检查目标用户是否存在
+			var dummy string
+			err := db.QueryRow("SELECT username FROM users WHERE username = ?", target).Scan(&dummy)
+			if err == sql.ErrNoRows { continue }
+
+			// 插入双向好友关系
+			_, _ = db.Exec("INSERT OR IGNORE INTO friends (username, friend_username) VALUES (?, ?)", authenticatedUser, target)
+			_, _ = db.Exec("INSERT OR IGNORE INTO friends (username, friend_username) VALUES (?, ?)", target, authenticatedUser)
+
+			sendSyncData(authenticatedUser)
+			stateMutex.RLock()
+			if _, online := clients[target]; online {
+				stateMutex.RUnlock()
+				sendSyncData(target)
+			} else {
+				stateMutex.RUnlock()
+			}
+
+		case "create_group":
+			if authenticatedUser == "" { continue }
+			gName, _ := payload["group_name"].(string)
+			membersInter, _ := payload["members"].([]interface{})
+
+			var members []string
+			for _, m := range membersInter {
+				if s, ok := m.(string); ok { members = append(members, s) }
+			}
+			members = append(members, authenticatedUser)
+
+			if len(members) < 3 || gName == "" {
+				conn.WriteJSON(map[string]string{"type": "create_group_err", "content": "群组创建不满足基本条件"})
+				continue
+			}
+
+			// 写入群组
+			res, err := db.Exec("INSERT INTO groups (name) VALUES (?)", gName)
+			if err != nil { continue }
+			gID, _ := res.LastInsertId()
+
+			// 写入群成员
+			for _, m := range members {
+				_, _ = db.Exec("INSERT INTO group_members (group_id, username) VALUES (?, ?)", gID, m)
+			}
+
+			conn.WriteJSON(map[string]interface{}{
+				"type":      "create_group_ok",
+				"target_id": strconv.FormatInt(gID, 10),
+				"content":   gName,
+			})
+
+			stateMutex.RLock()
+			for _, m := range members {
+				if m != authenticatedUser {
+					if _, online := clients[m]; online {
+						sendSyncData(m)
+					}
+				}
+			}
+			stateMutex.RUnlock()
+
+		case "msg":
+			if authenticatedUser == "" { continue }
+
+			stateMutex.RLock()
+			isMuted := globalMute
+			stateMutex.RUnlock()
+			if isMuted { continue }
+
+			tType, _ := payload["target_type"].(string)
+			tID, _ := payload["target_id"].(string)
+			content, _ := payload["content"].(string)
+
+			var avatar string
+			_ = db.QueryRow("SELECT avatar_url FROM users WHERE username = ?", authenticatedUser).Scan(&avatar)
+
+			res, err := db.Exec(`INSERT INTO messages (target_type, target_id, sender, content, timestamp, avatar_url) 
+				VALUES (?, ?, ?, ?, ?, ?)`, tType, tID, authenticatedUser, content, time.Now().Unix(), avatar)
+			if err != nil { continue }
+			msgID, _ := res.LastInsertId()
+
+			msg := Message{
+				ID:         msgID,
+				TargetType: tType,
+				TargetID:   tID,
+				Sender:     authenticatedUser,
+				Content:    content,
+				Timestamp:  time.Now().Unix(),
+				AvatarURL:  avatar,
+			}
+			broadcastMessage(msg)
 		}
 	}
 }
 
-func (h *Hub) run() {
-	for res := range h.broadcast {
-		h.mutex.Lock()
-		for client := range h.clients { client.WriteJSON(res) }
-		h.mutex.Unlock()
+func sendSyncData(username string) {
+	stateMutex.RLock()
+	conn, online := clients[username]
+	stateMutex.RUnlock()
+	if !online { return }
+
+	// 查询好友列表
+	rows, err := db.Query("SELECT friend_username FROM friends WHERE username = ?", username)
+	var friends []string
+	if err == nil {
+		for rows.Next() {
+			var f string
+			_ = rows.Scan(&f)
+			friends = append(friends, f)
+		}
+		rows.Close()
+	}
+
+	// 查询加入的群组
+	gRows, err := db.Query(`SELECT g.id, g.name FROM groups g 
+		JOIN group_members gm ON g.id = gm.group_id WHERE gm.username = ?`, username)
+	syncGroups := make([]map[string]interface{}, 0)
+	if err == nil {
+		for gRows.Next() {
+			var id int
+			var name string
+			_ = gRows.Scan(&id, &name)
+			syncGroups = append(syncGroups, map[string]interface{}{
+				"id":   id,
+				"name": name,
+			})
+		}
+		gRows.Close()
+	}
+
+	_ = conn.WriteJSON(map[string]interface{}{
+		"type":    "sync_data",
+		"friends": friends,
+		"groups":  syncGroups,
+	})
+}
+
+func broadcastMessage(msg Message) {
+	stateMutex.RLock()
+	defer stateMutex.RUnlock()
+
+	// 包装消息，添加 type 字段以供前端识别
+	msgWithType := map[string]interface{}{
+		"type":         "msg",
+		"id":           msg.ID,
+		"target_type":  msg.TargetType,
+		"target_id":    msg.TargetID,
+		"sender":       msg.Sender,
+		"content":      msg.Content,
+		"timestamp":    msg.Timestamp,
+		"avatar_url":   msg.AvatarURL,
+	}
+
+	switch msg.TargetType {
+	case "public":
+		for _, conn := range clients { _ = conn.WriteJSON(msgWithType) }
+	case "group":
+		gID, _ := strconv.Atoi(msg.TargetID)
+		rows, err := db.Query("SELECT username FROM group_members WHERE group_id = ?", gID)
+		if err == nil {
+			for rows.Next() {
+				var member string
+				_ = rows.Scan(&member)
+				if conn, online := clients[member]; online {
+					_ = conn.WriteJSON(msgWithType)
+				}
+			}
+			rows.Close()
+		}
+	case "private":
+		if conn, online := clients[msg.Sender]; online { _ = conn.WriteJSON(msgWithType) }
+		if msg.Sender != msg.TargetID {
+			if conn, online := clients[msg.TargetID]; online { _ = conn.WriteJSON(msgWithType) }
+		}
 	}
 }
 
-func openBrowser(url string) {
-	if runtime.GOOS == "windows" { exec.Command("roundll32", "url.dll,FileProtocolHandler", url).Start() }
+// --- HTTP 业务接口 ---
+
+// 获取消息历史接口
+func handleGetMessages(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet { return }
+	targetType := r.URL.Query().Get("type")
+	targetID := r.URL.Query().Get("id")
+	limit := r.URL.Query().Get("limit")
+	if limit == "" { limit = "100" }
+
+	rows, err := db.Query(`SELECT id, target_type, target_id, sender, content, timestamp, avatar_url 
+		FROM messages WHERE target_type = ? AND target_id = ? 
+		ORDER BY id DESC LIMIT ?`, targetType, targetID, limit)
+	var msgs []Message
+	if err == nil {
+		for rows.Next() {
+			var m Message
+			_ = rows.Scan(&m.ID, &m.TargetType, &m.TargetID, &m.Sender, &m.Content, &m.Timestamp, &m.AvatarURL)
+			msgs = append(msgs, m)
+		}
+		rows.Close()
+		// 反转顺序，使最老的消息在前
+		for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+			msgs[i], msgs[j] = msgs[j], msgs[i]
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(msgs)
+}
+
+func handleUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost { return }
+	file, header, err := r.FormFile("image")
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "无效的文件"})
+		return
+	}
+	defer file.Close()
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	randBytes := make([]byte, 8)
+	_, _ = rand.Read(randBytes)
+	newFileName := fmt.Sprintf("%d_%s%s", time.Now().UnixNano(), hex.EncodeToString(randBytes), ext)
+	savePath := filepath.Join("./uploads", newFileName)
+
+	out, err := os.Create(savePath)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer out.Close()
+	_, _ = io.Copy(out, file)
+
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{"url": "/uploads/" + newFileName})
+}
+
+func handleResetPassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost { return }
+	var req map[string]string
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	username := req["username"]
+	newPassword := req["password"]
+
+	res, err := db.Exec("UPDATE users SET password = ? WHERE username = ?", newPassword, username)
+	affected, _ := res.RowsAffected()
+
+	w.Header().Set("Content-Type", "application/json")
+	if err == nil && affected > 0 {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	} else {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "未找到对应的用户账号"})
+	}
+}
+
+// --- 管理员操作路由 (适配 admin.html 契约) ---
+
+func handleAdminUsers(w http.ResponseWriter, r *http.Request) {
+	if !checkAdminSecret(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	rows, err := db.Query("SELECT username, last_ip FROM users")
+	type AdminUserView struct {
+		IsOnline bool   `json:"is_online"`
+		Username string `json:"username"`
+		LastIP   string `json:"last_ip"`
+	}
+	var list []AdminUserView
+
+	stateMutex.RLock()
+	if err == nil {
+		for rows.Next() {
+			var u, ip string
+			_ = rows.Scan(&u, &ip)
+			_, online := clients[u]
+			list = append(list, AdminUserView{IsOnline: online, Username: u, LastIP: ip})
+		}
+		rows.Close()
+	}
+	stateMutex.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(list)
+}
+
+func handleAdminMessages(w http.ResponseWriter, r *http.Request) {
+	if !checkAdminSecret(r) { return }
+
+	rows, err := db.Query("SELECT id, sender, content FROM messages ORDER BY id DESC")
+	var list []AdminMessage
+	if err == nil {
+		for rows.Next() {
+			var m AdminMessage
+			_ = rows.Scan(&m.ID, &m.Sender, &m.Content)
+			list = append(list, m)
+		}
+		rows.Close()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(list)
+}
+
+func handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost { return }
+	var req map[string]string
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	if req["secret"] != adminSecret { return }
+
+	target := req["username"]
+	// 强制断开其 websocket
+	stateMutex.Lock()
+	if conn, online := clients[target]; online {
+		_ = conn.WriteJSON(map[string]string{"type": "auth_err", "content": "您的账号已被管理员注销"})
+		conn.Close()
+		delete(clients, target)
+	}
+	stateMutex.Unlock()
+
+	// 从持久层清除一切痕迹
+	_, _ = db.Exec("DELETE FROM users WHERE username = ?", target)
+	_, _ = db.Exec("DELETE FROM friends WHERE username = ? OR friend_username = ?", target, target)
+	_, _ = db.Exec("DELETE FROM group_members WHERE username = ?", target)
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func handleAdminDeleteMessage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost { return }
+	var req map[string]interface{}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	if req["secret"] != adminSecret { return }
+
+	idFloat, _ := req["id"].(float64)
+	_, _ = db.Exec("DELETE FROM messages WHERE id = ?", int64(idFloat))
+	w.WriteHeader(http.StatusOK)
+}
+
+func handleAdminStatus(w http.ResponseWriter, r *http.Request) {
+	if !checkAdminSecret(r) { return }
+	stateMutex.RLock()
+	m := globalMute
+	stateMutex.RUnlock()
+	_ = json.NewEncoder(w).Encode(map[string]bool{"global_mute": m})
+}
+
+func handleAdminToggleMute(w http.ResponseWriter, r *http.Request) {
+	if !checkAdminSecret(r) { return }
+	stateMutex.Lock()
+	globalMute = !globalMute
+	m := globalMute
+	stateMutex.Unlock()
+	_ = json.NewEncoder(w).Encode(map[string]bool{"global_mute": m})
+}
+
+func handleAdminBroadcast(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost { return }
+	var req map[string]string
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	if req["secret"] != adminSecret { return }
+
+	res, err := db.Exec(`INSERT INTO messages (target_type, target_id, sender, content, timestamp, avatar_url) 
+		VALUES ('public', 'global', '📢 系统公告', ?, ?, '')`, req["content"], time.Now().Unix())
+	if err != nil { return }
+	msgID, _ := res.LastInsertId()
+
+	msg := Message{
+		ID:         msgID,
+		TargetType: "public",
+		TargetID:   "global",
+		Sender:     "📢 系统公告",
+		Content:    req["content"],
+		Timestamp:  time.Now().Unix(),
+	}
+	broadcastMessage(msg)
+	w.WriteHeader(http.StatusOK)
 }

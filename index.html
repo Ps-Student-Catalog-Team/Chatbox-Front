@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>局域网通讯 | 公共聊天室</title>
+    <script src="./tailwind.browser.js"></script>
+    <style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .transition-fast { transition: all 0.2s ease; }
+        .chat-bubble-img {
+            transition: transform 0.1s ease;
+        }
+        .chat-bubble-img:hover {
+            transform: scale(1.01);
+        }
+        .fade-in-up {
+            opacity: 0;
+            transform: translateY(18px);
+            animation: fadeInUp 0.55s ease forwards;
+        }
+        .panel-fade {
+            opacity: 0;
+            transform: translateY(12px);
+            animation: fadeInUp 0.45s ease 0.15s forwards;
+        }
+        .chat-bubble {
+            opacity: 0;
+            transform: translateY(10px);
+            animation: bubbleIn 0.28s ease forwards;
+        }
+        .sidebar-item {
+            transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+        }
+        .sidebar-item:hover {
+            transform: translateX(4px);
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+        }
+        @keyframes fadeInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        @keyframes bubbleIn {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 h-screen flex items-center justify-center font-sans antialiased select-none">
+
+    <div id="loginPanel" class="bg-white p-6 md:p-8 rounded-2xl shadow-2xl w-full md:w-96 mx-4 md:mx-auto transition-all duration-300 fade-in-up">
+        <div class="mb-6 text-center">
+            <h2 class="text-2xl font-bold text-slate-800 tracking-wide">校内局域网通讯</h2>
+            <p class="text-sm text-slate-400 mt-1">网络通信平台 · 公共聊天室</p>
+        </div>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">账户名称</label>
+                <input type="text" id="usernameInput" placeholder="输入用户名" 
+                       class="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-500 mb-1">登录密码</label>
+                <input type="password" id="passwordInput" placeholder="输入密码" 
+                       class="w-full px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+            </div>
+            <div id="authError" class="text-xs text-red-500 min-h-[16px]"></div>
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="performLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-xl transition cursor-pointer text-sm shadow-sm">
+                    登录
+                </button>
+                <button onclick="performRegister()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2.5 rounded-xl transition cursor-pointer text-sm border border-slate-200">
+                    注册
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="mainApp" class="hidden bg-white w-full h-screen md:h-[700px] md:max-w-5xl md:rounded-2xl shadow-2xl flex overflow-hidden border border-slate-200/80 md:border panel-fade">
+        
+        <div class="w-12 md:w-16 bg-slate-900 flex flex-col items-center py-4 md:py-6 justify-between text-slate-400">
+            <div class="flex flex-col items-center space-y-6 w-full">
+                <div onclick="promptChangeAvatar()" class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-md cursor-pointer bg-cover bg-center" id="userAvatar" title="点击更改头像">
+                    U
+                </div>
+                <input type="file" id="avatarFileInput" accept=".jpg,.jpeg,.png,.gif" class="hidden" onchange="uploadAvatarImage(this)">
+                <button onclick="switchTab('chats')" id="btnTabChats" class="p-3 rounded-xl transition cursor-pointer text-white bg-slate-800">
+                    💬
+                </button>
+                <button onclick="switchTab('friends')" id="btnTabFriends" class="p-3 rounded-xl transition cursor-pointer hover:bg-slate-800 hover:text-white">
+                    📞
+                </button>
+            </div>
+            <button onclick="location.reload()" class="p-3 rounded-xl hover:bg-red-950 hover:text-red-400 transition cursor-pointer" title="安全退出">
+                📤
+            </button>
+        </div>
+
+        <div class="w-40 md:w-64 border-r border-slate-100 flex flex-col bg-slate-50/50">
+            <div class="p-4 border-b border-slate-100 min-h-[65px] flex items-center justify-between">
+                <h2 id="listTitle" class="text-sm font-bold text-slate-700">最近会话</h2>
+                <div id="listActions"></div>
+            </div>
+
+            <div id="listContent" class="flex-1 overflow-y-auto no-scrollbar p-2 space-y-1"></div>
+        </div>
+
+        <div id="chatView" class="flex-1 flex flex-col bg-white">
+            <div id="emptyView" class="flex-1 flex flex-col items-center justify-center text-slate-400 space-y-2">
+                <p class="text-sm tracking-wider">请在左侧选择一个好友、群组或<strong class="text-blue-500">公共聊天室</strong>开始交流</p>
+                <div class="text-[11px] text-slate-300 bg-slate-50 px-3 py-1 rounded-full">支持图片 · 公共聊天室</div>
+            </div>
+
+            <div id="activeChatWindow" class="hidden flex-1 flex flex-col h-full">
+                <div class="px-3 md:px-6 py-3 md:py-4 border-b border-slate-100 flex items-center justify-between bg-white shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+                    <div>
+                        <h3 id="activeChatName" class="text-xs md:text-sm font-bold text-slate-800">会话目标</h3>
+                        <p id="activeChatMeta" class="text-[10px] md:text-xs text-slate-400 mt-0.5">通道就绪</p>
+                    </div>
+                    <button onclick="refreshAllMessages()" class="text-xs md:text-sm text-slate-400 hover:text-slate-600 px-2 md:px-3 py-1 rounded-lg hover:bg-slate-100 transition cursor-pointer" title="刷新聊天记录">
+                        🔄 刷新
+                    </button>
+                </div>
+
+                <div id="chatBox" class="flex-1 p-3 md:p-6 overflow-y-auto space-y-3 md:space-y-4 bg-slate-50/60 no-scrollbar"></div>
+
+                <div class="p-2 md:p-4 bg-white border-t border-slate-100">
+                    <div class="flex items-center space-x-1 md:space-x-2">
+                        <button onclick="triggerImageUpload()" class="p-1.5 md:p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer font-bold text-lg md:text-xl" title="上传JPG/PNG/GIF图片">
+                            📎
+                        </button>
+                        <input type="file" id="imageFileInput" accept=".jpg,.jpeg,.png,.gif" class="hidden" onchange="uploadFileToServer(this)">
+
+                        <input type="text" id="messageInput" placeholder="请输入消息..." onkeydown="handleMessageInputKeydown(event)"
+                               class="flex-1 px-2 md:px-4 py-1.5 md:py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs md:text-sm bg-slate-50/50">
+                        
+                        <button onclick="sendMessage()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 md:px-5 py-1.5 md:py-2 rounded-xl text-xs md:text-sm font-medium transition cursor-pointer shadow-sm">
+                            发送
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="groupModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 w-80 space-y-4">
+            <h3 class="text-sm font-bold text-slate-800 flex items-center gap-1">创建讨论群组</h3>
+            <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">群聊名称</label>
+                <input type="text" id="newGroupName" placeholder="例如: 相亲相爱一家人" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">选择受邀好友 <span class="text-red-400">(至少选择2位)</span></label>
+                <div id="modalFriendsChecklist" class="max-h-32 overflow-y-auto space-y-1 border border-slate-100 p-2 rounded-lg bg-slate-50 no-scrollbar text-sm">
+                </div>
+            </div>
+            <div class="flex justify-end space-x-2 pt-2">
+                <button onclick="toggleGroupModal(false)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer">取消</button>
+                <button onclick="submitCreateGroup()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs cursor-pointer">创建群组</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let wsOpen = false;
+        let pendingAuthPayload = null;
+        let currentUser = "";
+        let currentTab = "chats";
+        let activeTarget = null;
+        let currentAvatar = { type: 'text', text: 'U', color: '#2563eb', url: '' };
+        
+        let globalFriends = [];
+        let globalGroups = [];
+        
+        let cacheMessages = {
+            "public:global": []
+        };  
+
+        const wsUri = "ws://" + window.location.host + "/ws";
+        const httpUri = window.location.protocol + "//" + window.location.host;
+
+        function isValidHexColor(value) {
+            return /^#([0-9A-F]{3}|[0-9A-F]{6})$/i.test(value);
+        }
+
+        function loadAvatarConfig() {
+            try {
+                const raw = localStorage.getItem('lanchat_avatar');
+                if (raw) {
+                    const stored = JSON.parse(raw);
+                    if (stored.type === 'image' && stored.url) {
+                        currentAvatar.type = 'image';
+                        currentAvatar.url = stored.url;
+                    }
+                    if (stored.text && typeof stored.text === 'string') {
+                        currentAvatar.text = stored.text.slice(0, 2).toUpperCase();
+                    }
+                    if (stored.color && isValidHexColor(stored.color)) {
+                        currentAvatar.color = stored.color;
+                    }
+                }
+                if (!currentAvatar.text && currentUser) {
+                    currentAvatar.text = currentUser.substring(0, 2).toUpperCase();
+                }
+            } catch (err) {
+                console.warn('加载头像配置失败', err);
+            }
+        }
+
+        function saveAvatarConfig() {
+            localStorage.setItem('lanchat_avatar', JSON.stringify(currentAvatar));
+        }
+
+        function applyUserAvatar() {
+            const avatarEl = document.getElementById('userAvatar');
+            if (!avatarEl) return;
+            if (currentAvatar.type === 'image' && currentAvatar.url) {
+                avatarEl.style.backgroundImage = `url(${httpUri}${currentAvatar.url})`;
+                avatarEl.style.backgroundColor = '';
+                avatarEl.innerText = '';
+            } else {
+                avatarEl.style.backgroundImage = '';
+                avatarEl.style.backgroundColor = currentAvatar.color || '#2563eb';
+                avatarEl.innerText = currentAvatar.text || (currentUser ? currentUser.substring(0, 2).toUpperCase() : 'U');
+            }
+        }
+
+        function promptChangeAvatar() {
+            const choice = prompt('输入 "图片" 上传头像，或者直接输入 1-2 个字符设置文字头像', '图片');
+            if (!choice) return;
+            const normalized = choice.trim().toLowerCase();
+            if (normalized === '图片' || normalized === 'image') {
+                document.getElementById('avatarFileInput').click();
+                return;
+            }
+            const newText = choice.trim().slice(0, 2).toUpperCase();
+            const color = prompt('请输入头像背景色 HEX（例如 #0ea5e9）', currentAvatar.color || '#2563eb');
+            if (color && !isValidHexColor(color.trim())) {
+                alert('无效颜色格式，请输入例如 #34d399 或 #0ea5e9');
+                return;
+            }
+            currentAvatar.type = 'text';
+            currentAvatar.url = '';
+            currentAvatar.text = newText || currentAvatar.text;
+            if (color) currentAvatar.color = color.trim();
+            saveAvatarConfig();
+            applyUserAvatar();
+        }
+        
+        function initWebSocket() {
+            ws = new WebSocket(wsUri);
+            ws.onopen = () => { 
+                wsOpen = true;
+                if (pendingAuthPayload) {
+                    ws.send(JSON.stringify(pendingAuthPayload));
+                    pendingAuthPayload = null;
+                } else if (currentUser) {
+                    syncUserRelations();
+                }
+            };
+            ws.onmessage = (e) => {
+                try {
+                    const data = JSON.parse(e.data);
+                    switch(data.type) {
+                        case "auth_ok":
+                            currentUser = document.getElementById('usernameInput').value.trim();
+                            if (data.avatar_url) {
+                                currentAvatar.type = 'image';
+                                currentAvatar.url = data.avatar_url;
+                            }
+                            loadAvatarConfig();
+                            applyUserAvatar();
+                            document.getElementById('loginPanel').classList.add('hidden');
+                            document.getElementById('mainApp').classList.remove('hidden');
+                            selectActiveChat('public', 'global', '公共聊天室');
+                            loadHistoryMessages('public', 'global');
+                            syncUserRelations(); 
+                            break;
+                        case "avatar_ok":
+                            if (data.avatar_url) {
+                                currentAvatar.type = 'image';
+                                currentAvatar.url = data.avatar_url;
+                                saveAvatarConfig();
+                                applyUserAvatar();
+                            }
+                            break;
+                        case "auth_err":
+                            document.getElementById('authError').innerText = data.content || "身份核验失败，请检查凭证";
+                            break;
+                        case "sync_data":
+                            globalFriends = data.friends || [];
+                            globalGroups = data.groups || [];
+                            renderSidebarList();
+                            break;
+                        case "create_group_ok":
+                            const newGroup = {
+                                id: parseInt(data.target_id, 10),
+                                name: data.content || "新群聊"
+                            };
+                            if (!globalGroups.some(g => g.id === newGroup.id)) {
+                                globalGroups.push(newGroup);
+                            }
+                            currentTab = 'chats';
+                            selectActiveChat('group', data.target_id, newGroup.name);
+                            loadHistoryMessages('group', data.target_id);
+                            break;
+                        case "create_group_err":
+                            alert(data.content || "群聊创建失败，请重试");
+                            break;
+                        case "msg":
+                            routeIncomingMessage(data);
+                            break;
+                        default:
+                            break;
+                    }
+                } catch(err) { console.warn("消息解析错误", err); }
+            };
+            ws.onclose = () => { 
+                wsOpen = false;
+                console.warn("⚠️ 连接断开，4秒后重连...");
+                setTimeout(initWebSocket, 4000); 
+            };
+            ws.onerror = (err) => { 
+                wsOpen = false;
+                console.error("WebSocket错误", err); 
+            };
+        }
+
+        function performLogin() {
+            const user = document.getElementById('usernameInput').value.trim();
+            const pwd = document.getElementById('passwordInput').value;
+            if(!user || !pwd) {
+                document.getElementById('authError').innerText = "请输入账号和密码";
+                return;
+            }
+            initWebSocket();
+            const loginPayload = { action: "login", username: user, password: pwd };
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(loginPayload));
+            } else {
+                pendingAuthPayload = loginPayload;
+            }
+        }
+
+        function performRegister() {
+            const user = document.getElementById('usernameInput').value.trim();
+            const pwd = document.getElementById('passwordInput').value;
+            if(!user || !pwd) {
+                document.getElementById('authError').innerText = "请输入账号和密码";
+                return;
+            }
+            initWebSocket();
+            const registerPayload = { action: "register", username: user, password: pwd };
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(registerPayload));
+            } else {
+                pendingAuthPayload = registerPayload;
+            }
+        }
+
+        function syncUserRelations() {
+            if(ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ action: "sync" }));
+            }
+        }
+
+        async function loadHistoryMessages(type, id) {
+            try {
+                const response = await fetch(`${httpUri}/api/messages?type=${type}&id=${id}&limit=200`);
+                const msgs = await response.json();
+                if (Array.isArray(msgs)) {
+                    const sessionKey = `${type}:${id}`;
+                    cacheMessages[sessionKey] = msgs;
+                    if (activeTarget && `${activeTarget.type}:${activeTarget.id}` === sessionKey) {
+                        renderChatBubbles();
+                    }
+                }
+            } catch (err) {
+                console.warn("加载历史消息失败", err);
+            }
+        }
+
+        function refreshAllMessages() {
+            if (!activeTarget) {
+                alert("请先选择一个聊天窗口");
+                return;
+            }
+            loadHistoryMessages(activeTarget.type, activeTarget.id);
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            document.getElementById('btnTabChats').className = `p-3 rounded-xl transition cursor-pointer ${tab==='chats'?'text-white bg-slate-800':'hover:bg-slate-800 text-slate-400'}`;
+            document.getElementById('btnTabFriends').className = `p-3 rounded-xl transition cursor-pointer ${tab==='friends'?'text-white bg-slate-800':'hover:bg-slate-800 text-slate-400'}`;
+            renderSidebarList();
+        }
+
+        function renderSidebarList() {
+            const title = document.getElementById('listTitle');
+            const actions = document.getElementById('listActions');
+            const content = document.getElementById('listContent');
+            content.innerHTML = "";
+
+            if (currentTab === "chats") {
+                title.innerText = "最近会话";
+                actions.innerHTML = "";
+                const pubDiv = document.createElement('div');
+                const isPublicActive = (activeTarget && activeTarget.type === 'public' && activeTarget.id === 'global');
+                pubDiv.className = `p-2 md:p-3 rounded-xl cursor-pointer transition text-xs md:text-sm flex items-center space-x-2 md:space-x-3 mb-1 ${isPublicActive ? 'bg-blue-50 text-blue-700 font-semibold border-l-3 border-blue-500' : 'hover:bg-slate-100 text-slate-700'}`;
+                pubDiv.innerHTML = `<span class="text-base">公共聊天室</span>`;
+                pubDiv.onclick = () => { selectActiveChat('public', 'global', '公共聊天室'); loadHistoryMessages('public', 'global'); };
+                content.appendChild(pubDiv);
+                const sortedKeys = Object.keys(cacheMessages).filter(key => key !== "public:global");
+                for (let key of sortedKeys) {
+                    const [type, id] = key.split(':');
+                    const div = document.createElement('div');
+                    let isActive = (activeTarget && activeTarget.type === type && activeTarget.id === id);
+                    div.className = `p-2 md:p-3 rounded-xl cursor-pointer transition text-xs md:text-sm flex items-center space-x-2 md:space-x-3 sidebar-item ${isActive ? 'bg-blue-50 text-blue-700 font-medium' : 'hover:bg-slate-100 text-slate-700'}`;
+                    let displayName = "";
+                    let icon = "私聊";
+                    if (type === "group") {
+                        const g = globalGroups.find(x => x.id.toString() === id);
+                        displayName = g ? g.name : `群组(${id})`;
+                        icon = "群组";
+                    } else {
+                        displayName = id;
+                        icon = "私聊";
+                    }
+                    div.innerHTML = `<span>${icon}</span><span class="flex-1 truncate">${displayName}</span>`;
+                    div.onclick = () => { selectActiveChat(type, id, displayName); loadHistoryMessages(type, id); };
+                    content.appendChild(div);
+                }
+                const emptyGroupIds = globalGroups.filter(g => !cacheMessages[`group:${g.id}`]);
+                if (emptyGroupIds.length > 0) {
+                    const sectionTitle = document.createElement('div');
+                    sectionTitle.className = "text-xs font-semibold text-slate-500 uppercase tracking-[0.16em] px-2 pt-4 pb-2";
+                    sectionTitle.innerText = "群组";
+                    content.appendChild(sectionTitle);
+                    emptyGroupIds.forEach(g => {
+                        const div = document.createElement('div');
+                        const isActive = activeTarget && activeTarget.type === 'group' && activeTarget.id === g.id.toString();
+                        div.className = `p-3 rounded-xl cursor-pointer transition text-sm flex items-center space-x-3 sidebar-item ${isActive ? 'bg-blue-50 text-blue-700 font-medium' : 'hover:bg-slate-100 text-slate-700'}`;
+                        div.innerHTML = `<span class="flex-1 truncate">${g.name}</span>`;
+                        div.onclick = () => selectActiveChat('group', g.id.toString(), g.name);
+                        content.appendChild(div);
+                    });
+                }
+                if(sortedKeys.length === 0 && emptyGroupIds.length === 0 && !isPublicActive) {
+                    const emptyTip = document.createElement('div');
+                    emptyTip.className = "text-center text-slate-400 text-xs py-6";
+                    emptyTip.innerText = "暂无历史会话，可通过通讯录发起新的聊天。";
+                    content.appendChild(emptyTip);
+                }
+            } else {
+                title.innerText = "通讯录管理";
+                actions.innerHTML = `
+                    <div class="flex items-center space-x-2">
+                        <button onclick="promptAddFriend()" class="text-xs bg-white px-2 py-1 rounded-lg shadow-sm border border-slate-200 text-blue-600 hover:bg-blue-50 transition cursor-pointer">添加好友</button>
+                        <button onclick="toggleGroupModal(true)" class="text-xs bg-white px-2 py-1 rounded-lg shadow-sm border border-slate-200 text-blue-600 hover:bg-blue-50 transition cursor-pointer">创建群组</button>
+                    </div>
+                `;
+                if (globalFriends.length === 0 && globalGroups.length === 0) {
+                    const emptyDiv = document.createElement('div');
+                    emptyDiv.className = "text-center text-slate-400 text-xs py-8";
+                    emptyDiv.innerText = "当前无好友或群组，可通过添加好友或创建群组开始。";
+                    content.appendChild(emptyDiv);
+                }
+                if (globalFriends.length > 0) {
+                    const friendsTitle = document.createElement('div');
+                    friendsTitle.className = "text-xs font-semibold text-slate-500 uppercase tracking-[0.16em] px-2 pb-2";
+                    friendsTitle.innerText = "好友列表";
+                    content.appendChild(friendsTitle);
+                    globalFriends.forEach(friend => {
+                        const div = document.createElement('div');
+                        div.className = "p-3 rounded-xl hover:bg-slate-100 cursor-pointer transition text-sm text-slate-700 flex items-center justify-between group";
+                        div.innerHTML = `<span class="flex items-center gap-2">${friend}</span><span class="text-xs text-blue-500 opacity-0 group-hover:opacity-100 transition">私聊</span>`;
+                        div.onclick = () => selectActiveChat('private', friend, friend);
+                        content.appendChild(div);
+                    });
+                }
+                if (globalGroups.length > 0) {
+                    const groupsTitle = document.createElement('div');
+                    groupsTitle.className = "text-xs font-semibold text-slate-500 uppercase tracking-[0.16em] px-2 pt-4 pb-2";
+                    groupsTitle.innerText = "群组列表";
+                    content.appendChild(groupsTitle);
+                    globalGroups.forEach(group => {
+                        const div = document.createElement('div');
+                        div.className = "p-3 rounded-xl hover:bg-slate-100 cursor-pointer transition text-sm text-slate-700 flex items-center space-x-3";
+                        div.innerHTML = `<span class="flex-1 truncate">${group.name}</span>`;
+                        div.onclick = () => selectActiveChat('group', group.id.toString(), group.name);
+                        content.appendChild(div);
+                    });
+                }
+            }
+        }
+
+        function selectActiveChat(type, id, displayName) {
+            if(!type || !id) return;
+            activeTarget = { type, id, name: displayName };
+            document.getElementById('emptyView').classList.add('hidden');
+            document.getElementById('activeChatWindow').classList.remove('hidden');
+            document.getElementById('activeChatName').innerHTML = type === 'public' ? '公共聊天室' : `${displayName}`;
+            let metaText = "";
+            if (type === "public") metaText = "校内公共聊天室，所有在线成员可见";
+            else if (type === "group") metaText = "群组讨论，仅群成员可见";
+            else metaText = "私聊通道，仅发送双方可见";
+            document.getElementById('activeChatMeta').innerText = metaText;
+            const sessionKey = `${type}:${id}`;
+            if (!cacheMessages[sessionKey]) cacheMessages[sessionKey] = [];
+            renderChatBubbles();
+            renderSidebarList();
+        }
+
+        function routeIncomingMessage(msg) {
+            let sessionKey = "";
+            if (msg.target_type === "public") {
+                sessionKey = "public:global";
+            } else if (msg.target_type === "group") {
+                sessionKey = `group:${msg.target_id}`;
+            } else {
+                const chatPartner = (msg.sender === currentUser) ? msg.target_id : msg.sender;
+                sessionKey = `private:${chatPartner}`;
+            }
+            if (!cacheMessages[sessionKey]) cacheMessages[sessionKey] = [];
+            if (!cacheMessages[sessionKey].some(m => m.id === msg.id)) {
+                cacheMessages[sessionKey].push(msg);
+                if (cacheMessages[sessionKey].length > 200) cacheMessages[sessionKey].shift();
+            }
+            if (activeTarget && `${activeTarget.type}:${activeTarget.id}` === sessionKey) {
+                renderChatBubbles();
+            }
+            if (currentTab === "chats") renderSidebarList();
+        }
+
+        function renderChatBubbles() {
+            if (!activeTarget) return;
+            const box = document.getElementById('chatBox');
+            box.innerHTML = "";
+            const sessionKey = `${activeTarget.type}:${activeTarget.id}`;
+            const messages = cacheMessages[sessionKey] || [];
+            if (messages.length === 0) {
+                const emptyTip = document.createElement('div');
+                emptyTip.className = "flex justify-center items-center h-full text-slate-300 text-xs md:text-sm";
+                emptyTip.innerText = "暂无消息，开始发送内容以展开对话。";
+                box.appendChild(emptyTip);
+                return;
+            }
+            messages.forEach(msg => {
+                const isMe = msg.sender === currentUser;
+                const wrapper = document.createElement('div');
+                wrapper.className = `flex ${isMe ? 'justify-end' : 'justify-start'} mb-2 md:mb-3`;
+                const body = document.createElement('div');
+                body.className = `flex ${isMe ? 'items-end' : 'items-start'} space-x-1 md:space-x-2 max-w-[90%] md:max-w-[80%] ${isMe ? 'ml-auto' : 'mr-auto'}`;
+
+                const avatarCell = document.createElement('div');
+                avatarCell.className = 'w-7 h-7 md:w-9 md:h-9 rounded-full overflow-hidden flex items-center justify-center bg-slate-200 text-[9px] md:text-[11px] font-semibold text-slate-700 flex-shrink-0';
+                if (msg.avatar_url) {
+                    const img = document.createElement('img');
+                    img.src = httpUri + msg.avatar_url;
+                    img.className = 'w-full h-full object-cover';
+                    avatarCell.appendChild(img);
+                } else {
+                    avatarCell.innerText = msg.sender.slice(0, 2).toUpperCase();
+                }
+                if (isMe) body.appendChild(buildMessageBubble(msg, isMe));
+                body.appendChild(avatarCell);
+                if (!isMe) body.appendChild(buildMessageBubble(msg, isMe));
+                wrapper.appendChild(body);
+                box.appendChild(wrapper);
+            });
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function buildMessageBubble(msg, isMe) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'flex flex-col space-y-0.5 md:space-y-1';
+            if (msg.timestamp) {
+                const timeLabel = document.createElement('span');
+                timeLabel.className = 'text-[8px] md:text-[10px] text-slate-400 px-1';
+                const date = new Date(msg.timestamp * 1000);
+                timeLabel.innerText = date.toLocaleString('zh-CN', {
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                });
+                wrapper.appendChild(timeLabel);
+            }
+            const senderSpan = document.createElement('span');
+            senderSpan.className = 'text-[8px] md:text-[11px] text-slate-400 px-1 font-medium flex items-center gap-1';
+            senderSpan.innerHTML = isMe ? `🔹 ${msg.sender} · 我` : `🔸 ${msg.sender}`;
+            wrapper.appendChild(senderSpan);
+
+            const bubble = document.createElement('div');
+            bubble.className = `px-3 md:px-4 py-1.5 md:py-2 rounded-2xl text-xs md:text-sm break-all shadow-sm transition-fast ${isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-slate-100'} chat-bubble`;
+            if (msg.content && msg.content.startsWith('/uploads/')) {
+                const img = document.createElement('img');
+                img.src = httpUri + msg.content;
+                img.className = 'max-w-[150px] md:max-w-[220px] max-h-40 rounded-lg my-1 cursor-pointer object-cover chat-bubble-img';
+                img.onclick = () => window.open(img.src);
+                bubble.appendChild(img);
+            } else {
+                bubble.innerText = msg.content || '[空消息]';
+            }
+            wrapper.appendChild(bubble);
+            return wrapper;
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            if (!input) {
+                alert("消息输入框未找到，请刷新页面");
+                return;
+            }
+            const text = input.value.trim();
+            if (!text) {
+                alert("消息内容不能为空");
+                return;
+            }
+            if (!activeTarget) {
+                alert("请先选择一个会话");
+                return;
+            }
+            const payload = {
+                action: "msg",
+                target_type: activeTarget.type,
+                target_id: activeTarget.id,
+                content: text
+            };
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                try {
+                    ws.send(JSON.stringify(payload));
+                    input.value = "";
+                } catch (err) {
+                    console.error("消息发送失败：", err);
+                    alert("消息发送失败，请检查连接或刷新页面");
+                }
+            } else {
+                alert("连接已断开，请刷新页面重试");
+            }
+        }
+
+        function handleMessageInputKeydown(event) {
+            if (event && event.key === 'Enter') {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        function triggerImageUpload() {
+            document.getElementById('imageFileInput').click();
+        }
+
+        async function uploadFileToServer(inputEl) {
+            if (!inputEl.files || inputEl.files.length === 0) return;
+            if (!activeTarget) {
+                alert("请先打开一个聊天窗口再发送图片");
+                inputEl.value = "";
+                return;
+            }
+            const file = inputEl.files[0];
+            if (!file.type.match('image.*')) {
+                alert("仅支持图片格式 (jpg/png/gif)");
+                inputEl.value = "";
+                return;
+            }
+            const formData = new FormData();
+            formData.append('image', file);
+            try {
+                const response = await fetch(`${httpUri}/api/upload`, { method: 'POST', body: formData });
+                const result = await response.json();
+                if (response.ok && result.url) {
+                    const payload = {
+                        action: "msg",
+                        target_type: activeTarget.type,
+                        target_id: activeTarget.id,
+                        content: result.url
+                    };
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify(payload));
+                    } else {
+                        alert("图片上传成功，但 WebSocket 未连接，无法发送消息内容");
+                    }
+                } else {
+                    alert("图片上传失败: " + (result.error || "服务端异常"));
+                }
+            } catch (err) {
+                console.error(err);
+                alert("网络错误，图片传输失败");
+            }
+            inputEl.value = "";
+        }
+
+        async function uploadAvatarImage(inputEl) {
+            if (!inputEl.files || inputEl.files.length === 0) return;
+            const file = inputEl.files[0];
+            if (!file.type.match('image.*')) {
+                alert("仅支持图片格式 (jpg/png/gif)");
+                inputEl.value = "";
+                return;
+            }
+            const formData = new FormData();
+            formData.append('image', file);
+            try {
+                const response = await fetch(`${httpUri}/api/upload`, { method: 'POST', body: formData });
+                const result = await response.json();
+                if (response.ok && result.url) {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ action: "update_avatar", content: result.url }));
+                        currentAvatar.type = 'image';
+                        currentAvatar.url = result.url;
+                        saveAvatarConfig();
+                        applyUserAvatar();
+                    } else {
+                        alert("头像上传成功，但 WebSocket 未连接，无法保存头像");
+                    }
+                } else {
+                    alert("头像上传失败: " + (result.error || "服务端异常"));
+                }
+            } catch (err) {
+                console.error(err);
+                alert("网络错误，头像上传失败");
+            }
+            inputEl.value = "";
+        }
+
+        function promptAddFriend() {
+            const friendName = prompt("请输入要添加的用户账号名称：");
+            if (!friendName || friendName.trim() === currentUser) {
+                if(friendName === currentUser) alert("不能添加自己为好友");
+                return;
+            }
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ action: "add_friend", target_user: friendName.trim() }));
+            } else {
+                alert("连接异常，请稍后重试");
+            }
+        }
+
+        function toggleGroupModal(visible) {
+            const modal = document.getElementById('groupModal');
+            if (visible) {
+                if (globalFriends.length < 2) {
+                    alert("当前好友数量不足2人，无法创建群组");
+                    return;
+                }
+                modal.classList.remove('hidden');
+                const listContainer = document.getElementById('modalFriendsChecklist');
+                listContainer.innerHTML = "";
+                globalFriends.forEach(f => {
+                    const label = document.createElement('label');
+                    label.className = "flex items-center space-x-2 py-1 cursor-pointer text-xs";
+                    label.innerHTML = `<input type="checkbox" value="${f}" class="rounded text-blue-600 w-3.5 h-3.5"> <span>${f}</span>`;
+                    listContainer.appendChild(label);
+                });
+                document.getElementById('newGroupName').value = "";
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        function submitCreateGroup() {
+            const groupName = document.getElementById('newGroupName').value.trim();
+            if (!groupName) {
+                alert("群聊名称不能为空");
+                return;
+            }
+            const checkboxes = document.querySelectorAll('#modalFriendsChecklist input[type="checkbox"]:checked');
+            if (checkboxes.length < 2) {
+                alert("至少需选择 2 位好友才能创建群组");
+                return;
+            }
+            const members = Array.from(checkboxes).map(cb => cb.value);
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    action: "create_group",
+                    group_name: groupName,
+                    members: members
+                }));
+                document.getElementById('newGroupName').value = "";
+                toggleGroupModal(false);
+            } else {
+                alert("WebSocket未连接，无法创建群组");
+            }
+        }
+
+    </script>
+</body>
+</html>
