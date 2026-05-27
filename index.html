@@ -9,6 +9,7 @@
     <title>局域网通讯 | 公共聊天室</title>
     <script src="./viewport-adapter.js"></script>
     <script src="./tailwind.browser.js"></script>
+    <script src="./chatHistory.js"></script>
     <!-- 根据设备自动加载对应 CSS -->
     <link rel="stylesheet" href="./style-desktop.css" media="(min-width: 768px)">
     <link rel="stylesheet" href="./style-mobile.css" media="(max-width: 767px)">
@@ -174,8 +175,8 @@
         </div>
     </div>
 
-    <div id="groupModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50">
-        <div class="bg-white rounded-2xl shadow-2xl p-6 w-80 space-y-4">
+    <div id="groupModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0">
+        <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-96 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 class="text-sm font-bold text-slate-800 flex items-center gap-1">创建讨论群组</h3>
             <div>
                 <label class="block text-xs font-medium text-slate-500 mb-1">群聊名称</label>
@@ -183,12 +184,12 @@
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-500 mb-1">选择受邀好友 <span class="text-red-400">(至少选择2位)</span></label>
-                <div id="modalFriendsChecklist" class="max-h-32 overflow-y-auto space-y-1 border border-slate-100 p-2 rounded-lg bg-slate-50 no-scrollbar text-sm">
+                <div id="modalFriendsChecklist" class="max-h-[45vh] md:max-h-64 overflow-y-auto space-y-2 border border-slate-100 p-3 rounded-lg bg-slate-50 no-scrollbar text-sm">
                 </div>
             </div>
-            <div class="flex justify-end space-x-2 pt-2">
-                <button onclick="toggleGroupModal(false)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer">取消</button>
-                <button onclick="submitCreateGroup()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs cursor-pointer">创建群组</button>
+            <div class="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+                <button onclick="toggleGroupModal(false)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer font-medium">取消</button>
+                <button onclick="submitCreateGroup()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs cursor-pointer font-medium">创建群组</button>
             </div>
         </div>
     </div>
@@ -608,60 +609,8 @@
             }
         }
 
-        async function loadHistoryMessages(type, id) {
-            try {
-                const response = await fetch(`${httpUri}/api/messages?type=${type}&id=${id}&limit=200`, {
-                    method: 'GET',
-                    headers: authHeaders(),
-                    credentials: 'same-origin'
-                });
-                const msgs = await response.json();
-                if (Array.isArray(msgs)) {
-                    const sessionKey = `${type}:${id}`;
-                    cacheMessages[sessionKey] = msgs;
-                    if (activeTarget && `${activeTarget.type}:${activeTarget.id}` === sessionKey) {
-                        renderChatBubbles();
-                    }
-                }
-            } catch (err) {
-                console.warn("加载历史消息失败", err);
-            }
-        }
-
-        /**
-         * 自动加载所有私聊和群聊的历史消息
-         */
-        async function loadAllPrivateChatHistory() {
-            const loadTasks = [];
-            
-            // 加载所有好友的私聊记录
-            if (globalFriends && globalFriends.length > 0) {
-                globalFriends.forEach(friend => {
-                    loadTasks.push(loadHistoryMessages('private', friend));
-                });
-            }
-            
-            // 加载所有群聊记录
-            if (globalGroups && globalGroups.length > 0) {
-                globalGroups.forEach(group => {
-                    loadTasks.push(loadHistoryMessages('group', group.id.toString()));
-                });
-            }
-            
-            // 并行加载所有消息
-            if (loadTasks.length > 0) {
-                await Promise.all(loadTasks);
-                console.log(`[聊天记录] 已自动加载 ${globalFriends.length} 个私聊和 ${globalGroups.length} 个群聊的历史消息`);
-            }
-        }
-
-        function refreshAllMessages() {
-            if (!activeTarget) {
-                alert("请先选择一个聊天窗口");
-                return;
-            }
-            loadHistoryMessages(activeTarget.type, activeTarget.id);
-        }
+        // 聊天记录相关函数已分离到 chatHistory.js 文件中
+        // 包括：loadHistoryMessages, loadAllPrivateChatHistory, refreshAllMessages
 
         function switchTab(tab) {
             currentTab = tab;
@@ -807,26 +756,7 @@
             }
         }
 
-        function routeIncomingMessage(msg) {
-            let sessionKey = "";
-            if (msg.target_type === "public") {
-                sessionKey = "public:global";
-            } else if (msg.target_type === "group") {
-                sessionKey = `group:${msg.target_id}`;
-            } else {
-                const chatPartner = (msg.sender === currentUser) ? msg.target_id : msg.sender;
-                sessionKey = `private:${chatPartner}`;
-            }
-            if (!cacheMessages[sessionKey]) cacheMessages[sessionKey] = [];
-            if (!cacheMessages[sessionKey].some(m => m.id === msg.id)) {
-                cacheMessages[sessionKey].push(msg);
-                if (cacheMessages[sessionKey].length > 200) cacheMessages[sessionKey].shift();
-            }
-            if (activeTarget && `${activeTarget.type}:${activeTarget.id}` === sessionKey) {
-                renderChatBubbles();
-            }
-            if (currentTab === "chats") renderSidebarList();
-        }
+        // 消息路由函数已分离到 chatHistory.js
 
         function renderChatBubbles() {
             if (!activeTarget) return;
@@ -1457,23 +1387,7 @@
             }
         }
 
-        /**
-         * 清空私聊记录
-         */
-        function clearPrivateChatHistory() {
-            if (!activeTarget || activeTarget.type !== 'private') {
-                alert("请先选择一个私聊");
-                return;
-            }
-
-            const confirmed = confirm(`确定要清空与 "${activeTarget.name}" 的聊天记录吗？\n※ 此操作仅清除本地记录，对方的记录不会被删除`);
-            if (confirmed) {
-                const sessionKey = `private:${activeTarget.id}`;
-                cacheMessages[sessionKey] = [];
-                renderChatBubbles();
-                alert("已清空聊天记录");
-            }
-        }
+        // 清空私聊记录函数已分离到 chatHistory.js
 
         /**
          * 确认退出群聊
