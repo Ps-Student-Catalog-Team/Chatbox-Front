@@ -66,19 +66,36 @@
 }
 
 /* 手机特定优化 */
+:root {
+    --mobile-sidebar-width: 80%;
+    --mobile-sidebar-max-width: 320px;
+    --mobile-panel-max-width: 420px;
+    --mobile-base-font-size: 15px;
+    --mobile-input-font-size: 16px;
+    --mobile-button-min-height: 44px;
+    --mobile-chat-input-height: 44px;
+    --mobile-page-gutter: 16px;
+    --mobile-screen-width: 100vw;
+    --mobile-screen-height: 100vh;
+}
+
 * {
     -webkit-tap-highlight-color: transparent; /* 禁用点击高亮 */
 }
 
 /* 侧边栏菜单 - 毛玻璃效果 */
 #sidebarList {
-    width: 80% !important;
-    max-width: 320px !important;
+    width: var(--mobile-sidebar-width) !important;
+    max-width: var(--mobile-sidebar-max-width) !important;
     background: rgba(248, 250, 252, 0.7) !important;
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     background-blend-mode: overlay;
     box-shadow: -2px 0 12px rgba(0, 0, 0, 0.1);
+}
+
+#loginPanel {
+    max-width: var(--mobile-panel-max-width);
 }
 
 /* 侧边栏内容优化 */
@@ -99,14 +116,14 @@
 button, [role="button"] {
     -webkit-appearance: none;
     appearance: none;
-    min-height: 44px; /* iOS 推荐的触摸区域大小 */
+    min-height: var(--mobile-button-min-height); /* iOS 推荐的触摸区域大小 */
     min-width: 44px;
 }
 
 input {
     -webkit-appearance: none;
     appearance: none;
-    font-size: 16px; /* 防止 iOS 自动放大 */
+    font-size: var(--mobile-input-font-size); /* 防止 iOS 自动放大 */
 }
 
 /* 禁用长按菜单 */
