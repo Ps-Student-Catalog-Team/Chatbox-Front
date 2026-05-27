@@ -5,51 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>局域网通讯 | 公共聊天室</title>
     <script src="./tailwind.browser.js"></script>
-    <style>
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .transition-fast { transition: all 0.2s ease; }
-        .chat-bubble-img {
-            transition: transform 0.1s ease;
-        }
-        .chat-bubble-img:hover {
-            transform: scale(1.01);
-        }
-        .fade-in-up {
-            opacity: 0;
-            transform: translateY(18px);
-            animation: fadeInUp 0.55s ease forwards;
-        }
-        .panel-fade {
-            opacity: 0;
-            transform: translateY(12px);
-            animation: fadeInUp 0.45s ease 0.15s forwards;
-        }
-        .chat-bubble {
-            opacity: 0;
-            transform: translateY(10px);
-            animation: bubbleIn 0.28s ease forwards;
-        }
-        .sidebar-item {
-            transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
-        }
-        .sidebar-item:hover {
-            transform: translateX(4px);
-            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
-        }
-        @keyframes fadeInUp {
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        @keyframes bubbleIn {
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-    </style>
+    <!-- 根据设备自动加载对应 CSS -->
+    <link rel="stylesheet" href="./style-desktop.css" media="(min-width: 768px)">
+    <link rel="stylesheet" href="./style-mobile.css" media="(max-width: 767px)">
 </head>
 <body class="bg-slate-100 h-screen flex items-center justify-center font-sans antialiased select-none">
 
@@ -89,22 +47,26 @@
                     U
                 </div>
                 <input type="file" id="avatarFileInput" accept=".jpg,.jpeg,.png,.gif" class="hidden" onchange="uploadAvatarImage(this)">
-                <button onclick="switchTab('chats')" id="btnTabChats" class="p-3 rounded-xl transition cursor-pointer text-white bg-slate-800">
+                <button onclick="toggleSidebar(true); switchTab('chats');" id="btnTabChats" class="p-3 rounded-xl transition cursor-pointer text-white bg-slate-800">
                     💬
                 </button>
-                <button onclick="switchTab('friends')" id="btnTabFriends" class="p-3 rounded-xl transition cursor-pointer hover:bg-slate-800 hover:text-white">
+                <button onclick="toggleSidebar(true); switchTab('friends');" id="btnTabFriends" class="p-3 rounded-xl transition cursor-pointer hover:bg-slate-800 hover:text-white">
                     📞
                 </button>
             </div>
-            <button onclick="location.reload()" class="p-3 rounded-xl hover:bg-red-950 hover:text-red-400 transition cursor-pointer" title="安全退出">
+            <button onclick="logout()" class="p-3 rounded-xl hover:bg-red-950 hover:text-red-400 transition cursor-pointer" title="安全退出">
                 📤
             </button>
         </div>
 
-        <div class="w-40 md:w-64 border-r border-slate-100 flex flex-col bg-slate-50/50">
-            <div class="p-4 border-b border-slate-100 min-h-[65px] flex items-center justify-between">
+        <!-- 侧边栏抽屉 -->
+        <div id="sidebarOverlay" class="hidden fixed inset-0 bg-slate-900/30 md:hidden z-40" onclick="toggleSidebar(false)"></div>
+        
+        <div id="sidebarList" class="w-40 md:w-64 border-r border-slate-100 flex flex-col bg-slate-50/50 fixed md:relative left-0 top-0 h-full z-50 md:z-auto transform -translate-x-full md:translate-x-0 transition-transform duration-300 md:transition-none">
+            <div class="p-4 border-b border-slate-100 min-h-[65px] flex items-center justify-between gap-2">
                 <h2 id="listTitle" class="text-sm font-bold text-slate-700">最近会话</h2>
-                <div id="listActions"></div>
+                <div id="listActions" class="flex-1"></div>
+                <button onclick="toggleSidebar(false)" class="md:hidden p-2 hover:bg-slate-200 rounded-lg text-slate-600 flex-shrink-0">✕</button>
             </div>
 
             <div id="listContent" class="flex-1 overflow-y-auto no-scrollbar p-2 space-y-1"></div>
@@ -168,6 +130,8 @@
     </div>
 
     <script>
+        const authTokenKey = 'lanchat_auth_token';
+        const authUserKey = 'lanchat_auth_user';
         let ws = null;
         let wsOpen = false;
         let pendingAuthPayload = null;
@@ -185,6 +149,45 @@
 
         const wsUri = "ws://" + window.location.host + "/ws";
         const httpUri = window.location.protocol + "//" + window.location.host;
+
+        function authHeaders() {
+            const token = localStorage.getItem(authTokenKey);
+            return token ? { Authorization: `Bearer ${token}` } : {};
+        }
+
+        function saveAuthData(token, username) {
+            if (token) {
+                localStorage.setItem(authTokenKey, token);
+            }
+            if (username) {
+                localStorage.setItem(authUserKey, username);
+            }
+        }
+
+        function clearAuthData() {
+            localStorage.removeItem(authTokenKey);
+            localStorage.removeItem(authUserKey);
+            currentUser = "";
+        }
+
+        function restoreAuthFromStorage() {
+            const savedUser = localStorage.getItem(authUserKey);
+            const savedToken = localStorage.getItem(authTokenKey);
+            if (!savedUser || !savedToken) return;
+
+            document.getElementById('usernameInput').value = savedUser;
+            currentUser = savedUser;
+            pendingAuthPayload = { action: 'resume', token: savedToken };
+            initWebSocket();
+        }
+
+        function logout() {
+            clearAuthData();
+            if (ws) {
+                ws.close();
+            }
+            window.location.reload();
+        }
 
         function isValidHexColor(value) {
             return /^#([0-9A-F]{3}|[0-9A-F]{6})$/i.test(value);
@@ -270,7 +273,12 @@
                     const data = JSON.parse(e.data);
                     switch(data.type) {
                         case "auth_ok":
-                            currentUser = document.getElementById('usernameInput').value.trim();
+                            currentUser = document.getElementById('usernameInput').value.trim() || localStorage.getItem(authUserKey) || currentUser;
+                            if (data.token) {
+                                saveAuthData(data.token, currentUser);
+                            } else {
+                                saveAuthData(localStorage.getItem(authTokenKey), currentUser);
+                            }
                             if (data.avatar_url) {
                                 currentAvatar.type = 'image';
                                 currentAvatar.url = data.avatar_url;
@@ -336,10 +344,12 @@
         function performLogin() {
             const user = document.getElementById('usernameInput').value.trim();
             const pwd = document.getElementById('passwordInput').value;
+            document.getElementById('authError').innerText = "";
             if(!user || !pwd) {
                 document.getElementById('authError').innerText = "请输入账号和密码";
                 return;
             }
+            currentUser = user;
             initWebSocket();
             const loginPayload = { action: "login", username: user, password: pwd };
             if (ws && ws.readyState === WebSocket.OPEN) {
@@ -352,10 +362,12 @@
         function performRegister() {
             const user = document.getElementById('usernameInput').value.trim();
             const pwd = document.getElementById('passwordInput').value;
+            document.getElementById('authError').innerText = "";
             if(!user || !pwd) {
                 document.getElementById('authError').innerText = "请输入账号和密码";
                 return;
             }
+            currentUser = user;
             initWebSocket();
             const registerPayload = { action: "register", username: user, password: pwd };
             if (ws && ws.readyState === WebSocket.OPEN) {
@@ -373,7 +385,11 @@
 
         async function loadHistoryMessages(type, id) {
             try {
-                const response = await fetch(`${httpUri}/api/messages?type=${type}&id=${id}&limit=200`);
+                const response = await fetch(`${httpUri}/api/messages?type=${type}&id=${id}&limit=200`, {
+                    method: 'GET',
+                    headers: authHeaders(),
+                    credentials: 'same-origin'
+                });
                 const msgs = await response.json();
                 if (Array.isArray(msgs)) {
                     const sessionKey = `${type}:${id}`;
@@ -516,6 +532,10 @@
             if (!cacheMessages[sessionKey]) cacheMessages[sessionKey] = [];
             renderChatBubbles();
             renderSidebarList();
+            // 手机上选择聊天后自动关闭侧边栏
+            if (window.innerWidth < 768) {
+                toggleSidebar(false);
+            }
         }
 
         function routeIncomingMessage(msg) {
@@ -675,7 +695,12 @@
             const formData = new FormData();
             formData.append('image', file);
             try {
-                const response = await fetch(`${httpUri}/api/upload`, { method: 'POST', body: formData });
+                const response = await fetch(`${httpUri}/api/upload`, {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: formData,
+                    credentials: 'same-origin'
+                });
                 const result = await response.json();
                 if (response.ok && result.url) {
                     const payload = {
@@ -710,7 +735,12 @@
             const formData = new FormData();
             formData.append('image', file);
             try {
-                const response = await fetch(`${httpUri}/api/upload`, { method: 'POST', body: formData });
+                const response = await fetch(`${httpUri}/api/upload`, {
+                    method: 'POST',
+                    headers: authHeaders(),
+                    body: formData,
+                    credentials: 'same-origin'
+                });
                 const result = await response.json();
                 if (response.ok && result.url) {
                     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -791,6 +821,22 @@
                 alert("WebSocket未连接，无法创建群组");
             }
         }
+
+        window.addEventListener('DOMContentLoaded', restoreAuthFromStorage);
+
+        // 侧边栏展开/收起控制
+        function toggleSidebar(show) {
+            const sidebar = document.getElementById('sidebarList');
+            const overlay = document.getElementById('sidebarOverlay');
+            if (show) {
+                sidebar.classList.remove('-translate-x-full');
+                overlay.classList.remove('hidden');
+            } else {
+                sidebar.classList.add('-translate-x-full');
+                overlay.classList.add('hidden');
+            }
+        }
+
 
     </script>
 </body>

@@ -1,0 +1,117 @@
+/* Mobile CSS - 手机版样式 */
+
+.no-scrollbar::-webkit-scrollbar { 
+    display: none; 
+}
+.no-scrollbar { 
+    -ms-overflow-style: none; 
+    scrollbar-width: none; 
+}
+
+.transition-fast { 
+    transition: all 0.15s ease; 
+}
+
+.chat-bubble-img {
+    transition: transform 0.08s ease;
+    /* 禁用 hover 效果，手机不支持 */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+}
+
+.chat-bubble-img:active {
+    transform: scale(0.98);
+}
+
+.fade-in-up {
+    opacity: 0;
+    transform: translateY(12px);
+    animation: fadeInUp 0.4s ease forwards;
+}
+
+.panel-fade {
+    opacity: 0;
+    transform: translateY(8px);
+    animation: fadeInUp 0.35s ease 0.1s forwards;
+}
+
+.chat-bubble {
+    opacity: 0;
+    transform: translateY(8px);
+    animation: bubbleIn 0.25s ease forwards;
+}
+
+.sidebar-item {
+    transition: background-color 0.12s ease;
+    /* 移除 hover 效果 */
+}
+
+.sidebar-item:active {
+    background-color: rgba(59, 130, 246, 0.1);
+    transform: none;
+}
+
+@keyframes fadeInUp {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes bubbleIn {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 手机特定优化 */
+* {
+    -webkit-tap-highlight-color: transparent; /* 禁用点击高亮 */
+}
+
+/* 侧边栏菜单 - 毛玻璃效果 */
+#sidebarList {
+    width: 80% !important;
+    max-width: 320px !important;
+    background: rgba(248, 250, 252, 0.7) !important;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    background-blend-mode: overlay;
+    box-shadow: -2px 0 12px rgba(0, 0, 0, 0.1);
+}
+
+/* 侧边栏内容优化 */
+#listContent {
+    padding: 0.5rem !important;
+}
+
+#listContent > div {
+    padding: 0.5rem !important;
+    font-size: 14px !important;
+}
+
+/* 侧边栏遮罩 */
+#sidebarOverlay {
+    background-color: rgba(15, 23, 42, 0.15) !important;
+}
+
+button, [role="button"] {
+    -webkit-appearance: none;
+    appearance: none;
+    min-height: 44px; /* iOS 推荐的触摸区域大小 */
+    min-width: 44px;
+}
+
+input {
+    -webkit-appearance: none;
+    appearance: none;
+    font-size: 16px; /* 防止 iOS 自动放大 */
+}
+
+/* 禁用长按菜单 */
+img {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}

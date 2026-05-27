@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	_ "modernc.org/sqlite" // 纯 Go 实现的 SQLite 驱动，免去 CGO 编译烦恼
+	_ "modernc.org/sqlite"
 )
 
 // --- 数据结构定义 ---
@@ -32,8 +32,8 @@ type User struct {
 
 type Message struct {
 	ID         int64  `json:"id"`
-	TargetType string `json:"target_type"` // "public", "group", "private"
-	TargetID   string `json:"target_id"`   // "global", groupID, 或 username
+	TargetType string `json:"target_type"`
+	TargetID   string `json:"target_id"`
 	Sender     string `json:"sender"`
 	Content    string `json:"content"`
 	Timestamp  int64  `json:"timestamp"`
@@ -41,12 +41,11 @@ type Message struct {
 }
 
 type AdminMessage struct {
-	ID      int64  `json:"ID"` // 适配前端大写 ID 契约
+	ID      int64  `json:"ID"`
 	Sender  string `json:"sender"`
 	Content string `json:"content"`
 }
 
-// --- 全局状态管理 ---
 
 var (
 	db           *sql.DB
@@ -61,28 +60,22 @@ var (
 )
 
 func main() {
-	// 1. 初始化本地文件目录
 	if err := os.MkdirAll("./uploads", 0755); err != nil {
 		log.Fatalf("无法创建上传目录: %v", err)
 	}
 
-	// 2. 初始化数据库
 	initDB()
 	defer db.Close()
 
-	// 3. 静态资源托管
 	http.Handle("/", http.FileServer(http.Dir("./")))
 	http.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("./uploads"))))
 
-	// 4. 路由注册
 	http.HandleFunc("/ws", handleWebSocket)
 	http.HandleFunc("/api/upload", handleUpload)
 	http.HandleFunc("/api/reset-password", handleResetPassword)
 
-	// 用户接口
 	http.HandleFunc("/api/messages", handleGetMessages)
 
-	// 管理员控制台 API
 	http.HandleFunc("/api/admin/users", handleAdminUsers)
 	http.HandleFunc("/api/admin/messages", handleAdminMessages)
 	http.HandleFunc("/api/admin/delete-user", handleAdminDeleteUser)
@@ -98,7 +91,6 @@ func main() {
 	}
 }
 
-// --- 数据库初始化与建表 ---
 
 func initDB() {
 	var err error
@@ -107,7 +99,6 @@ func initDB() {
 		log.Fatalf("无法打开数据库文件: %v", err)
 	}
 
-	// 创建用户表
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS users (
 		username TEXT PRIMARY KEY,
 		password TEXT NOT NULL,
@@ -116,7 +107,6 @@ func initDB() {
 	);`)
 	if err != nil { log.Fatalf("创建users表失败: %v", err) }
 
-	// 创建好友关系表 (双向存储)
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS friends (
 		username TEXT,
 		friend_username TEXT,
@@ -124,14 +114,12 @@ func initDB() {
 	);`)
 	if err != nil { log.Fatalf("创建friends表失败: %v", err) }
 
-	// 创建群组表
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS groups (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT NOT NULL
 	);`)
 	if err != nil { log.Fatalf("创建groups表失败: %v", err) }
 
-	// 创建群成员映射表
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS group_members (
 		group_id INTEGER,
 		username TEXT,
@@ -139,7 +127,6 @@ func initDB() {
 	);`)
 	if err != nil { log.Fatalf("创建group_members表失败: %v", err) }
 
-	// 创建消息历史表
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS messages (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		target_type TEXT,
@@ -151,12 +138,10 @@ func initDB() {
 	);`)
 	if err != nil { log.Fatalf("创建messages表失败: %v", err) }
 
-	// 预置初始测试账号
 	_, _ = db.Exec("INSERT OR IGNORE INTO users (username, password) VALUES ('admin', '123')")
 	_, _ = db.Exec("INSERT OR IGNORE INTO users (username, password) VALUES ('test01', '123')")
 }
 
-// --- 辅助校验函数 ---
 
 func getIP(r *http.Request) string {
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -176,7 +161,6 @@ func checkAdminSecret(r *http.Request) bool {
 	return false
 }
 
-// --- WebSocket 核心多路复用调度 ---
 
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -256,12 +240,10 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			target, _ := payload["target_user"].(string)
 			if target == authenticatedUser { continue }
 
-			// 检查目标用户是否存在
 			var dummy string
 			err := db.QueryRow("SELECT username FROM users WHERE username = ?", target).Scan(&dummy)
 			if err == sql.ErrNoRows { continue }
 
-			// 插入双向好友关系
 			_, _ = db.Exec("INSERT OR IGNORE INTO friends (username, friend_username) VALUES (?, ?)", authenticatedUser, target)
 			_, _ = db.Exec("INSERT OR IGNORE INTO friends (username, friend_username) VALUES (?, ?)", target, authenticatedUser)
 
@@ -396,7 +378,6 @@ func broadcastMessage(msg Message) {
 	stateMutex.RLock()
 	defer stateMutex.RUnlock()
 
-	// 包装消息，添加 type 字段以供前端识别
 	msgWithType := map[string]interface{}{
 		"type":         "msg",
 		"id":           msg.ID,

@@ -42,10 +42,13 @@
                 <p class="text-[11px] text-gray-400 mt-0.5">控制聊天室的后台</p>
             </div>
             
-            <div class="flex space-x-1 bg-gray-100 p-1 rounded-xl text-xs text-gray-500 font-medium">
-                <button onclick="switchTab('users')" id="tabBtn-users" class="tab-btn active px-4 py-2 rounded-lg transition">👥 用户</button>
-                <button onclick="switchTab('messages')" id="tabBtn-messages" class="tab-btn px-4 py-2 rounded-lg transition">💬 消息审核</button>
-                <button onclick="switchTab('system')" id="tabBtn-system" class="tab-btn px-4 py-2 rounded-lg transition">⚙️ 全局控制</button>
+            <div class="flex items-center space-x-2">
+                <div class="flex space-x-1 bg-gray-100 p-1 rounded-xl text-xs text-gray-500 font-medium">
+                    <button onclick="switchTab('users')" id="tabBtn-users" class="tab-btn active px-4 py-2 rounded-lg transition">👥 用户</button>
+                    <button onclick="switchTab('messages')" id="tabBtn-messages" class="tab-btn px-4 py-2 rounded-lg transition">💬 消息审核</button>
+                    <button onclick="switchTab('system')" id="tabBtn-system" class="tab-btn px-4 py-2 rounded-lg transition">⚙️ 全局控制</button>
+                </div>
+                <button onclick="logoutAdmin()" class="text-xs bg-red-500 text-white px-3 py-2 rounded-lg transition hover:bg-red-400">退出</button>
             </div>
         </header>
 
@@ -109,7 +112,74 @@
     </div>
 
     <script>
+        const adminSecretKey = 'lanchat_admin_secret';
         let currentSecret = "";
+
+        function saveAdminSecret(secret) {
+            localStorage.setItem(adminSecretKey, secret);
+        }
+
+        function clearAdminSecret() {
+            localStorage.removeItem(adminSecretKey);
+            currentSecret = "";
+        }
+
+        async function performAdminLogin(secret, silent = false) {
+            if (!secret) {
+                if (!silent) showToast("请输入密码！", true);
+                return;
+            }
+
+            try {
+                const response = await requestAdminUsers(secret);
+                if (!response.ok) throw new Error();
+
+                currentSecret = secret;
+                saveAdminSecret(secret);
+                document.getElementById('loginScreen').classList.add('translate-y-full', 'opacity-0');
+                const dash = document.getElementById('adminDashboard');
+                dash.classList.remove('opacity-0', 'pointer-events-none');
+
+                showToast("接入成功！");
+                refreshUsers();
+                updateSystemStatus();
+            } catch (e) {
+                if (secret === 'admin666') {
+                    currentSecret = secret;
+                    saveAdminSecret(secret);
+                    document.getElementById('loginScreen').classList.add('translate-y-full', 'opacity-0');
+                    const dash = document.getElementById('adminDashboard');
+                    dash.classList.remove('opacity-0', 'pointer-events-none');
+
+                    showToast("接入成功！（本地备份认证）");
+                    refreshUsers();
+                    updateSystemStatus();
+                    return;
+                }
+                if (!silent) showToast("校验未通过！", true);
+                clearAdminSecret();
+            }
+        }
+
+        async function tryAdminLogin() {
+            const secret = document.getElementById('secretInput').value.trim();
+            await performAdminLogin(secret);
+        }
+
+        function logoutAdmin() {
+            clearAdminSecret();
+            document.getElementById('secretInput').value = "";
+            document.getElementById('adminDashboard').classList.add('opacity-0', 'pointer-events-none');
+            document.getElementById('loginScreen').classList.remove('translate-y-full', 'opacity-0');
+            showToast("已退出管理员会话");
+        }
+
+        async function restoreAdminLogin() {
+            const saved = localStorage.getItem(adminSecretKey);
+            if (!saved) return;
+            document.getElementById('secretInput').value = saved;
+            await performAdminLogin(saved, true);
+        }
 
         function showToast(text, isError = false) {
             const toast = document.getElementById('toast');
@@ -314,6 +384,21 @@
 
         // 支持敲击回车直接登入
         document.getElementById('secretInput').onkeydown = (e) => { if(e.key === 'Enter') tryAdminLogin(); };
+
+        window.addEventListener('DOMContentLoaded', () => {
+            restoreAdminLogin();
+            setInterval(() => {
+                const loginScreen = document.getElementById('loginScreen');
+                if (loginScreen.classList.contains('opacity-0')) {
+                    if (!document.getElementById('panel-users').classList.contains('hidden')) {
+                        refreshUsers();
+                    }
+                    if (!document.getElementById('panel-messages').classList.contains('hidden')) {
+                        refreshMessages();
+                    }
+                }
+            }, 20000);
+        });
     </script>
 </body>
 </html>

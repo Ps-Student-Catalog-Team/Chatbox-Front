@@ -1,0 +1,62 @@
+/* Desktop CSS - 桌面版样式 */
+
+.no-scrollbar::-webkit-scrollbar { 
+    display: none; 
+}
+.no-scrollbar { 
+    -ms-overflow-style: none; 
+    scrollbar-width: none; 
+}
+
+.transition-fast { 
+    transition: all 0.2s ease; 
+}
+
+.chat-bubble-img {
+    transition: transform 0.1s ease;
+}
+
+.chat-bubble-img:hover {
+    transform: scale(1.01);
+}
+
+.fade-in-up {
+    opacity: 0;
+    transform: translateY(18px);
+    animation: fadeInUp 0.55s ease forwards;
+}
+
+.panel-fade {
+    opacity: 0;
+    transform: translateY(12px);
+    animation: fadeInUp 0.45s ease 0.15s forwards;
+}
+
+.chat-bubble {
+    opacity: 0;
+    transform: translateY(10px);
+    animation: bubbleIn 0.28s ease forwards;
+}
+
+.sidebar-item {
+    transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+}
+
+.sidebar-item:hover {
+    transform: translateX(4px);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+@keyframes fadeInUp {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes bubbleIn {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
