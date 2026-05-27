@@ -1,5 +1,58 @@
 /* Mobile CSS - 手机版样式 */
 
+/* CSS变量定义 - 用于动态视口适配 */
+:root {
+    /* 动态视口高度 - 由JavaScript设置 */
+    --viewport-height: 100vh;
+    --viewport-width: 100vw;
+    --safe-height: 100vh;
+    --usable-height: 100vh;
+    
+    /* safe area inset - 处理notch和折叠区 */
+    --safe-area-inset-top: 0px;
+    --safe-area-inset-bottom: 0px;
+    --safe-area-inset-left: 0px;
+    --safe-area-inset-right: 0px;
+    
+    /* 手机特定变量 */
+    --mobile-sidebar-width: 80%;
+    --mobile-sidebar-max-width: 320px;
+    --mobile-panel-max-width: 420px;
+    --mobile-base-font-size: 15px;
+    --mobile-input-font-size: 16px;
+    --mobile-button-min-height: 44px;
+    --mobile-chat-input-height: 44px;
+    --mobile-page-gutter: 16px;
+}
+
+/* 确保html和body占满整个视口 */
+html {
+    /* 使用dvh(动态视口高度) - 会自动根据浏览器UI调整 */
+    /* 回退到vh，由JavaScript动态调整 */
+    height: 100dvh;
+    height: 100vh;
+    width: 100%;
+    overflow: hidden;
+}
+
+body {
+    height: var(--viewport-height);
+    width: var(--viewport-width);
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    
+    /* 防止安卓键盘弹出时页面缩放 */
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
+
 .no-scrollbar::-webkit-scrollbar { 
     display: none; 
 }
@@ -83,19 +136,55 @@
     -webkit-tap-highlight-color: transparent; /* 禁用点击高亮 */
 }
 
+/* 登录面板 - 确保完整显示 */
+#loginPanel {
+    max-width: var(--mobile-panel-max-width);
+    max-height: 90%;
+    overflow-y: auto;
+    padding-top: max(var(--mobile-page-gutter), env(safe-area-inset-top));
+    padding-bottom: max(var(--mobile-page-gutter), env(safe-area-inset-bottom));
+    padding-left: max(var(--mobile-page-gutter), env(safe-area-inset-left));
+    padding-right: max(var(--mobile-page-gutter), env(safe-area-inset-right));
+}
+
+/* 主应用容器 */
+#mainApp {
+    height: var(--viewport-height) !important;
+    max-height: var(--usable-height) !important;
+    width: 100% !important;
+    padding-top: max(0px, env(safe-area-inset-top));
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
+    padding-left: max(0px, env(safe-area-inset-left));
+    padding-right: max(0px, env(safe-area-inset-right));
+}
+
 /* 侧边栏菜单 - 毛玻璃效果 */
 #sidebarList {
     width: var(--mobile-sidebar-width) !important;
     max-width: var(--mobile-sidebar-max-width) !important;
+    height: 100% !important;
     background: rgba(248, 250, 252, 0.7) !important;
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     background-blend-mode: overlay;
     box-shadow: -2px 0 12px rgba(0, 0, 0, 0.1);
+    padding-top: max(0px, env(safe-area-inset-top));
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
 }
 
-#loginPanel {
-    max-width: var(--mobile-panel-max-width);
+/* 聊天输入框 - 确保不被键盘遮挡 */
+#messageInput {
+    font-size: var(--mobile-input-font-size) !important;
+    min-height: var(--mobile-chat-input-height);
+    /* 防止iOS双击缩放 */
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+/* 聊天框 - 完整高度占用 */
+#chatBox {
+    height: auto;
+    flex: 1 1 auto;
 }
 
 /* 侧边栏内容优化 */

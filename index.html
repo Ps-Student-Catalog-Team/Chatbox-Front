@@ -2,14 +2,34 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0, user-scalable=yes">
+    <meta name="theme-color" content="#ffffff">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>局域网通讯 | 公共聊天室</title>
+    <script src="./viewport-adapter.js"></script>
     <script src="./tailwind.browser.js"></script>
     <!-- 根据设备自动加载对应 CSS -->
     <link rel="stylesheet" href="./style-desktop.css" media="(min-width: 768px)">
     <link rel="stylesheet" href="./style-mobile.css" media="(max-width: 767px)">
 </head>
-<body class="bg-slate-100 h-screen flex items-center justify-center font-sans antialiased select-none">
+<body class="bg-slate-100 w-full flex items-center justify-center font-sans antialiased select-none" style="height: 100dvh; height: 100vh;">
+
+    <style>
+        /* 紧急样式 - 确保body完整填充 */
+        body {
+            margin: 0;
+            padding: 0;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 100dvh;
+            height: 100vh;
+            width: 100vw;
+        }
+    </style>
 
     <div id="loginPanel" class="bg-white p-6 md:p-8 rounded-2xl shadow-2xl w-full md:w-96 mx-4 md:mx-auto transition-all duration-300 fade-in-up">
         <div class="mb-6 text-center">
@@ -39,7 +59,8 @@
         </div>
     </div>
 
-    <div id="mainApp" class="hidden bg-white w-full h-screen md:h-[700px] md:max-w-5xl md:rounded-2xl shadow-2xl flex overflow-hidden border border-slate-200/80 md:border panel-fade">
+    <div id="mainApp" class="hidden bg-white w-full flex overflow-hidden border border-slate-200/80" style="height: 100dvh; height: 100vh; max-height: 100dvh;" >
+        
         
         <div class="w-12 md:w-16 bg-slate-900 flex flex-col items-center py-4 md:py-6 justify-between text-slate-400">
             <div class="flex flex-col items-center space-y-6 w-full">
