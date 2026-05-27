@@ -24,10 +24,10 @@ import (
 // --- 数据结构定义 ---
 
 type User struct {
-	Username  string   `json:"username"`
-	AvatarURL string   `json:"avatar_url"`
-	IsOnline  bool     `json:"is_online"`
-	LastIP    string   `json:"last_ip"`
+	Username  string `json:"username"`
+	AvatarURL string `json:"avatar_url"`
+	IsOnline  bool   `json:"is_online"`
+	LastIP    string `json:"last_ip"`
 }
 
 type Message struct {
@@ -46,13 +46,12 @@ type AdminMessage struct {
 	Content string `json:"content"`
 }
 
-
 var (
-	db           *sql.DB
-	clients      = make(map[string]*websocket.Conn) // 仅在线路由维护在内存中
-	globalMute   = false
-	stateMutex   sync.RWMutex
-	adminSecret  = "admin666" // 管理员通行密钥
+	db          *sql.DB
+	clients     = make(map[string]*websocket.Conn) // 仅在线路由维护在内存中
+	globalMute  = false
+	stateMutex  sync.RWMutex
+	adminSecret = "admin666" // 管理员通行密钥
 
 	upgrader = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
@@ -75,6 +74,8 @@ func main() {
 	http.HandleFunc("/api/reset-password", handleResetPassword)
 
 	http.HandleFunc("/api/messages", handleGetMessages)
+	http.HandleFunc("/api/group/", handleGroupMembers)
+	http.HandleFunc("/api/online-users", handleGetOnlineUsers)
 
 	http.HandleFunc("/api/admin/users", handleAdminUsers)
 	http.HandleFunc("/api/admin/messages", handleAdminMessages)
@@ -91,7 +92,6 @@ func main() {
 	}
 }
 
-
 func initDB() {
 	var err error
 	db, err = sql.Open("sqlite", "./chat.db")
@@ -105,27 +105,36 @@ func initDB() {
 		avatar_url TEXT DEFAULT '',
 		last_ip TEXT DEFAULT ''
 	);`)
-	if err != nil { log.Fatalf("创建users表失败: %v", err) }
+	if err != nil {
+		log.Fatalf("创建users表失败: %v", err)
+	}
 
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS friends (
 		username TEXT,
 		friend_username TEXT,
 		PRIMARY KEY (username, friend_username)
 	);`)
-	if err != nil { log.Fatalf("创建friends表失败: %v", err) }
+	if err != nil {
+		log.Fatalf("创建friends表失败: %v", err)
+	}
 
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS groups (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		name TEXT NOT NULL
+		name TEXT NOT NULL,
+		owner TEXT NOT NULL
 	);`)
-	if err != nil { log.Fatalf("创建groups表失败: %v", err) }
+	if err != nil {
+		log.Fatalf("创建groups表失败: %v", err)
+	}
 
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS group_members (
 		group_id INTEGER,
 		username TEXT,
 		PRIMARY KEY (group_id, username)
 	);`)
-	if err != nil { log.Fatalf("创建group_members表失败: %v", err) }
+	if err != nil {
+		log.Fatalf("创建group_members表失败: %v", err)
+	}
 
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS messages (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -136,35 +145,45 @@ func initDB() {
 		timestamp INTEGER,
 		avatar_url TEXT
 	);`)
-	if err != nil { log.Fatalf("创建messages表失败: %v", err) }
+	if err != nil {
+		log.Fatalf("创建messages表失败: %v", err)
+	}
 
 	_, _ = db.Exec("INSERT OR IGNORE INTO users (username, password) VALUES ('admin', '123')")
 	_, _ = db.Exec("INSERT OR IGNORE INTO users (username, password) VALUES ('test01', '123')")
 }
 
-
 func getIP(r *http.Request) string {
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil { return r.RemoteAddr }
-	if ip == "::1" { return "127.0.0.1" }
+	if err != nil {
+		return r.RemoteAddr
+	}
+	if ip == "::1" {
+		return "127.0.0.1"
+	}
 	return ip
 }
 
 func checkAdminSecret(r *http.Request) bool {
 	secret := r.URL.Query().Get("secret")
-	if secret == adminSecret { return true }
+	if secret == adminSecret {
+		return true
+	}
 	if r.Method == http.MethodPost {
 		var body map[string]interface{}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		if s, ok := body["secret"].(string); ok && s == adminSecret { return true }
+		if s, ok := body["secret"].(string); ok && s == adminSecret {
+			return true
+		}
 	}
 	return false
 }
 
-
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 	clientIP := getIP(r)
 	var authenticatedUser string
 
@@ -179,10 +198,14 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	for {
 		_, msgBytes, err := conn.ReadMessage()
-		if err != nil { break }
+		if err != nil {
+			break
+		}
 
 		var payload map[string]interface{}
-		if err := json.Unmarshal(msgBytes, &payload); err != nil { continue }
+		if err := json.Unmarshal(msgBytes, &payload); err != nil {
+			continue
+		}
 
 		action, _ := payload["action"].(string)
 
@@ -224,11 +247,15 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			conn.WriteJSON(map[string]string{"type": "auth_ok", "avatar_url": dbAvatar})
 
 		case "sync":
-			if authenticatedUser == "" { continue }
+			if authenticatedUser == "" {
+				continue
+			}
 			sendSyncData(authenticatedUser)
 
 		case "update_avatar":
-			if authenticatedUser == "" { continue }
+			if authenticatedUser == "" {
+				continue
+			}
 			content, _ := payload["content"].(string)
 			_, err := db.Exec("UPDATE users SET avatar_url = ? WHERE username = ?", content, authenticatedUser)
 			if err == nil {
@@ -236,13 +263,19 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 
 		case "add_friend":
-			if authenticatedUser == "" { continue }
+			if authenticatedUser == "" {
+				continue
+			}
 			target, _ := payload["target_user"].(string)
-			if target == authenticatedUser { continue }
+			if target == authenticatedUser {
+				continue
+			}
 
 			var dummy string
 			err := db.QueryRow("SELECT username FROM users WHERE username = ?", target).Scan(&dummy)
-			if err == sql.ErrNoRows { continue }
+			if err == sql.ErrNoRows {
+				continue
+			}
 
 			_, _ = db.Exec("INSERT OR IGNORE INTO friends (username, friend_username) VALUES (?, ?)", authenticatedUser, target)
 			_, _ = db.Exec("INSERT OR IGNORE INTO friends (username, friend_username) VALUES (?, ?)", target, authenticatedUser)
@@ -257,13 +290,17 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 
 		case "create_group":
-			if authenticatedUser == "" { continue }
+			if authenticatedUser == "" {
+				continue
+			}
 			gName, _ := payload["group_name"].(string)
 			membersInter, _ := payload["members"].([]interface{})
 
 			var members []string
 			for _, m := range membersInter {
-				if s, ok := m.(string); ok { members = append(members, s) }
+				if s, ok := m.(string); ok {
+					members = append(members, s)
+				}
 			}
 			members = append(members, authenticatedUser)
 
@@ -272,9 +309,11 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			// 写入群组
-			res, err := db.Exec("INSERT INTO groups (name) VALUES (?)", gName)
-			if err != nil { continue }
+			// 写入群组（添加owner字段）
+			res, err := db.Exec("INSERT INTO groups (name, owner) VALUES (?, ?)", gName, authenticatedUser)
+			if err != nil {
+				continue
+			}
 			gID, _ := res.LastInsertId()
 
 			// 写入群成员
@@ -299,12 +338,16 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			stateMutex.RUnlock()
 
 		case "msg":
-			if authenticatedUser == "" { continue }
+			if authenticatedUser == "" {
+				continue
+			}
 
 			stateMutex.RLock()
 			isMuted := globalMute
 			stateMutex.RUnlock()
-			if isMuted { continue }
+			if isMuted {
+				continue
+			}
 
 			tType, _ := payload["target_type"].(string)
 			tID, _ := payload["target_id"].(string)
@@ -315,7 +358,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 			res, err := db.Exec(`INSERT INTO messages (target_type, target_id, sender, content, timestamp, avatar_url) 
 				VALUES (?, ?, ?, ?, ?, ?)`, tType, tID, authenticatedUser, content, time.Now().Unix(), avatar)
-			if err != nil { continue }
+			if err != nil {
+				continue
+			}
 			msgID, _ := res.LastInsertId()
 
 			msg := Message{
@@ -328,6 +373,202 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				AvatarURL:  avatar,
 			}
 			broadcastMessage(msg)
+
+		case "rename_group":
+			if authenticatedUser == "" {
+				continue
+			}
+			groupIDStr, _ := payload["group_id"].(string)
+			newName, _ := payload["new_name"].(string)
+			if groupIDStr == "" || newName == "" {
+				conn.WriteJSON(map[string]string{"type": "rename_group_err", "content": "参数不能为空"})
+				continue
+			}
+
+			// 验证用户是否为群主
+			var owner string
+			err := db.QueryRow("SELECT owner FROM groups WHERE id = ?", groupIDStr).Scan(&owner)
+			if err != nil || owner != authenticatedUser {
+				conn.WriteJSON(map[string]string{"type": "rename_group_err", "content": "只有群主才能重命名群聊"})
+				continue
+			}
+
+			// 更新群名
+			_, err = db.Exec("UPDATE groups SET name = ? WHERE id = ?", newName, groupIDStr)
+			if err != nil {
+				conn.WriteJSON(map[string]string{"type": "rename_group_err", "content": "更新失败"})
+				continue
+			}
+
+			conn.WriteJSON(map[string]interface{}{"type": "rename_group_ok", "group_id": groupIDStr, "new_name": newName})
+
+			// 通知群成员重新同步
+			gID, _ := strconv.Atoi(groupIDStr)
+			rows, _ := db.Query("SELECT username FROM group_members WHERE group_id = ?", gID)
+			if rows != nil {
+				for rows.Next() {
+					var member string
+					_ = rows.Scan(&member)
+					sendSyncData(member)
+				}
+				rows.Close()
+			}
+
+		case "publish_announcement":
+			if authenticatedUser == "" {
+				continue
+			}
+			groupIDStr, _ := payload["group_id"].(string)
+			announcement, _ := payload["announcement"].(string)
+			if groupIDStr == "" || announcement == "" {
+				conn.WriteJSON(map[string]string{"type": "publish_announcement_err", "content": "参数不能为空"})
+				continue
+			}
+
+			// 验证用户是否为群主
+			var owner string
+			err := db.QueryRow("SELECT owner FROM groups WHERE id = ?", groupIDStr).Scan(&owner)
+			if err != nil || owner != authenticatedUser {
+				conn.WriteJSON(map[string]string{"type": "publish_announcement_err", "content": "只有群主才能发布公告"})
+				continue
+			}
+
+			conn.WriteJSON(map[string]interface{}{"type": "publish_announcement_ok", "group_id": groupIDStr})
+
+			// 发送系统公告消息到群聊
+			var avatar string
+			_ = db.QueryRow("SELECT avatar_url FROM users WHERE username = ?", authenticatedUser).Scan(&avatar)
+
+			res, err := db.Exec(`INSERT INTO messages (target_type, target_id, sender, content, timestamp, avatar_url) 
+				VALUES (?, ?, ?, ?, ?, ?)`, "group", groupIDStr, "📢 群公告", announcement, time.Now().Unix(), avatar)
+			if err == nil {
+				msgID, _ := res.LastInsertId()
+				msg := Message{
+					ID:         msgID,
+					TargetType: "group",
+					TargetID:   groupIDStr,
+					Sender:     "📢 群公告",
+					Content:    announcement,
+					Timestamp:  time.Now().Unix(),
+					AvatarURL:  avatar,
+				}
+				broadcastMessage(msg)
+			}
+
+		case "disband_group":
+			if authenticatedUser == "" {
+				continue
+			}
+			groupIDStr, _ := payload["group_id"].(string)
+			if groupIDStr == "" {
+				conn.WriteJSON(map[string]string{"type": "disband_group_err", "content": "群聊ID不能为空"})
+				continue
+			}
+
+			// 验证用户是否为群主
+			var owner string
+			err := db.QueryRow("SELECT owner FROM groups WHERE id = ?", groupIDStr).Scan(&owner)
+			if err != nil || owner != authenticatedUser {
+				conn.WriteJSON(map[string]string{"type": "disband_group_err", "content": "只有群主才能解散群聊"})
+				continue
+			}
+
+			gID, _ := strconv.Atoi(groupIDStr)
+
+			// 获取群成员
+			rows, _ := db.Query("SELECT username FROM group_members WHERE group_id = ?", gID)
+			var members []string
+			if rows != nil {
+				for rows.Next() {
+					var member string
+					_ = rows.Scan(&member)
+					members = append(members, member)
+				}
+				rows.Close()
+			}
+
+			// 删除群聊、成员、消息
+			_, _ = db.Exec("DELETE FROM groups WHERE id = ?", gID)
+			_, _ = db.Exec("DELETE FROM group_members WHERE group_id = ?", gID)
+			_, _ = db.Exec("DELETE FROM messages WHERE target_type = 'group' AND target_id = ?", groupIDStr)
+
+			conn.WriteJSON(map[string]interface{}{"type": "disband_group_ok", "group_id": groupIDStr})
+
+			// 通知所有成员重新同步
+			stateMutex.RLock()
+			for _, member := range members {
+				if _, online := clients[member]; online {
+					sendSyncData(member)
+				}
+			}
+			stateMutex.RUnlock()
+
+		case "quit_group":
+			if authenticatedUser == "" {
+				continue
+			}
+			groupIDStr, _ := payload["group_id"].(string)
+			if groupIDStr == "" {
+				conn.WriteJSON(map[string]string{"type": "quit_group_err", "content": "群聊ID不能为空"})
+				continue
+			}
+
+			gID, _ := strconv.Atoi(groupIDStr)
+
+			// 删除用户从群聊中
+			_, err := db.Exec("DELETE FROM group_members WHERE group_id = ? AND username = ?", gID, authenticatedUser)
+			if err != nil {
+				conn.WriteJSON(map[string]string{"type": "quit_group_err", "content": "退出失败"})
+				continue
+			}
+
+			conn.WriteJSON(map[string]interface{}{"type": "quit_group_ok", "group_id": groupIDStr})
+			sendSyncData(authenticatedUser)
+
+		case "add_member_to_group":
+			if authenticatedUser == "" {
+				continue
+			}
+			groupIDStr, _ := payload["group_id"].(string)
+			newMembersInter, _ := payload["members"].([]interface{})
+			if groupIDStr == "" || len(newMembersInter) == 0 {
+				conn.WriteJSON(map[string]string{"type": "add_member_err", "content": "参数不能为空"})
+				continue
+			}
+
+			// 验证用户是否为群主
+			var owner string
+			err := db.QueryRow("SELECT owner FROM groups WHERE id = ?", groupIDStr).Scan(&owner)
+			if err != nil || owner != authenticatedUser {
+				conn.WriteJSON(map[string]string{"type": "add_member_err", "content": "只有群主才能添加成员"})
+				continue
+			}
+
+			gID, _ := strconv.Atoi(groupIDStr)
+			var addedCount int
+
+			// 添加新成员
+			for _, m := range newMembersInter {
+				if s, ok := m.(string); ok {
+					// 检查该用户是否存在
+					var dummy string
+					err := db.QueryRow("SELECT username FROM users WHERE username = ?", s).Scan(&dummy)
+					if err == nil {
+						// 添加成员
+						res, err := db.Exec("INSERT OR IGNORE INTO group_members (group_id, username) VALUES (?, ?)", gID, s)
+						if err == nil {
+							affected, _ := res.RowsAffected()
+							if affected > 0 {
+								addedCount++
+								// 通知新成员
+								sendSyncData(s)
+							}
+						}
+					}
+				}
+			}
+
+			conn.WriteJSON(map[string]interface{}{"type": "add_member_ok", "group_id": groupIDStr, "added": addedCount})
 		}
 	}
 }
@@ -336,7 +577,9 @@ func sendSyncData(username string) {
 	stateMutex.RLock()
 	conn, online := clients[username]
 	stateMutex.RUnlock()
-	if !online { return }
+	if !online {
+		return
+	}
 
 	// 查询好友列表
 	rows, err := db.Query("SELECT friend_username FROM friends WHERE username = ?", username)
@@ -350,18 +593,19 @@ func sendSyncData(username string) {
 		rows.Close()
 	}
 
-	// 查询加入的群组
-	gRows, err := db.Query(`SELECT g.id, g.name FROM groups g 
+	// 查询加入的群组 （添加owner字段）
+	gRows, err := db.Query(`SELECT g.id, g.name, g.owner FROM groups g 
 		JOIN group_members gm ON g.id = gm.group_id WHERE gm.username = ?`, username)
 	syncGroups := make([]map[string]interface{}, 0)
 	if err == nil {
 		for gRows.Next() {
 			var id int
-			var name string
-			_ = gRows.Scan(&id, &name)
+			var name, owner string
+			_ = gRows.Scan(&id, &name, &owner)
 			syncGroups = append(syncGroups, map[string]interface{}{
-				"id":   id,
-				"name": name,
+				"id":    id,
+				"name":  name,
+				"owner": owner,
 			})
 		}
 		gRows.Close()
@@ -379,19 +623,21 @@ func broadcastMessage(msg Message) {
 	defer stateMutex.RUnlock()
 
 	msgWithType := map[string]interface{}{
-		"type":         "msg",
-		"id":           msg.ID,
-		"target_type":  msg.TargetType,
-		"target_id":    msg.TargetID,
-		"sender":       msg.Sender,
-		"content":      msg.Content,
-		"timestamp":    msg.Timestamp,
-		"avatar_url":   msg.AvatarURL,
+		"type":        "msg",
+		"id":          msg.ID,
+		"target_type": msg.TargetType,
+		"target_id":   msg.TargetID,
+		"sender":      msg.Sender,
+		"content":     msg.Content,
+		"timestamp":   msg.Timestamp,
+		"avatar_url":  msg.AvatarURL,
 	}
 
 	switch msg.TargetType {
 	case "public":
-		for _, conn := range clients { _ = conn.WriteJSON(msgWithType) }
+		for _, conn := range clients {
+			_ = conn.WriteJSON(msgWithType)
+		}
 	case "group":
 		gID, _ := strconv.Atoi(msg.TargetID)
 		rows, err := db.Query("SELECT username FROM group_members WHERE group_id = ?", gID)
@@ -406,9 +652,13 @@ func broadcastMessage(msg Message) {
 			rows.Close()
 		}
 	case "private":
-		if conn, online := clients[msg.Sender]; online { _ = conn.WriteJSON(msgWithType) }
+		if conn, online := clients[msg.Sender]; online {
+			_ = conn.WriteJSON(msgWithType)
+		}
 		if msg.Sender != msg.TargetID {
-			if conn, online := clients[msg.TargetID]; online { _ = conn.WriteJSON(msgWithType) }
+			if conn, online := clients[msg.TargetID]; online {
+				_ = conn.WriteJSON(msgWithType)
+			}
 		}
 	}
 }
@@ -417,11 +667,15 @@ func broadcastMessage(msg Message) {
 
 // 获取消息历史接口
 func handleGetMessages(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet { return }
+	if r.Method != http.MethodGet {
+		return
+	}
 	targetType := r.URL.Query().Get("type")
 	targetID := r.URL.Query().Get("id")
 	limit := r.URL.Query().Get("limit")
-	if limit == "" { limit = "100" }
+	if limit == "" {
+		limit = "100"
+	}
 
 	rows, err := db.Query(`SELECT id, target_type, target_id, sender, content, timestamp, avatar_url 
 		FROM messages WHERE target_type = ? AND target_id = ? 
@@ -443,8 +697,68 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(msgs)
 }
 
+func handleGroupMembers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		return
+	}
+	// 解析 /api/group/{groupId}/members
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 || parts[len(parts)-1] != "members" {
+		return
+	}
+	groupIDStr := parts[len(parts)-2]
+
+	gID, err := strconv.Atoi(groupIDStr)
+	if err != nil {
+		return
+	}
+
+	// 查询群成员和群主
+	var owner string
+	_ = db.QueryRow("SELECT owner FROM groups WHERE id = ?", gID).Scan(&owner)
+
+	rows, err := db.Query("SELECT username FROM group_members WHERE group_id = ?", gID)
+	type MemberInfo struct {
+		Username string `json:"username"`
+		IsOwner  bool   `json:"is_owner"`
+	}
+	var members []MemberInfo
+	if err == nil {
+		for rows.Next() {
+			var member string
+			_ = rows.Scan(&member)
+			members = append(members, MemberInfo{
+				Username: member,
+				IsOwner:  member == owner,
+			})
+		}
+		rows.Close()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"members": members,
+	})
+}
+
+func handleGetOnlineUsers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		return
+	}
+	stateMutex.RLock()
+	count := len(clients)
+	stateMutex.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]int{
+		"online_count": count,
+	})
+}
+
 func handleUpload(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost { return }
+	if r.Method != http.MethodPost {
+		return
+	}
 	file, header, err := r.FormFile("image")
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -472,7 +786,9 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleResetPassword(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost { return }
+	if r.Method != http.MethodPost {
+		return
+	}
 	var req map[string]string
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
@@ -525,7 +841,9 @@ func handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleAdminMessages(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminSecret(r) { return }
+	if !checkAdminSecret(r) {
+		return
+	}
 
 	rows, err := db.Query("SELECT id, sender, content FROM messages ORDER BY id DESC")
 	var list []AdminMessage
@@ -543,10 +861,14 @@ func handleAdminMessages(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost { return }
+	if r.Method != http.MethodPost {
+		return
+	}
 	var req map[string]string
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	if req["secret"] != adminSecret { return }
+	if req["secret"] != adminSecret {
+		return
+	}
 
 	target := req["username"]
 	// 强制断开其 websocket
@@ -567,10 +889,14 @@ func handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleAdminDeleteMessage(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost { return }
+	if r.Method != http.MethodPost {
+		return
+	}
 	var req map[string]interface{}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	if req["secret"] != adminSecret { return }
+	if req["secret"] != adminSecret {
+		return
+	}
 
 	idFloat, _ := req["id"].(float64)
 	_, _ = db.Exec("DELETE FROM messages WHERE id = ?", int64(idFloat))
@@ -578,7 +904,9 @@ func handleAdminDeleteMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleAdminStatus(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminSecret(r) { return }
+	if !checkAdminSecret(r) {
+		return
+	}
 	stateMutex.RLock()
 	m := globalMute
 	stateMutex.RUnlock()
@@ -586,7 +914,9 @@ func handleAdminStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleAdminToggleMute(w http.ResponseWriter, r *http.Request) {
-	if !checkAdminSecret(r) { return }
+	if !checkAdminSecret(r) {
+		return
+	}
 	stateMutex.Lock()
 	globalMute = !globalMute
 	m := globalMute
@@ -595,14 +925,20 @@ func handleAdminToggleMute(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleAdminBroadcast(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost { return }
+	if r.Method != http.MethodPost {
+		return
+	}
 	var req map[string]string
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	if req["secret"] != adminSecret { return }
+	if req["secret"] != adminSecret {
+		return
+	}
 
 	res, err := db.Exec(`INSERT INTO messages (target_type, target_id, sender, content, timestamp, avatar_url) 
 		VALUES ('public', 'global', '📢 系统公告', ?, ?, '')`, req["content"], time.Now().Unix())
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 	msgID, _ := res.LastInsertId()
 
 	msg := Message{

@@ -101,13 +101,56 @@
 
             <div id="activeChatWindow" class="hidden flex-1 flex flex-col h-full">
                 <div class="px-3 md:px-6 py-3 md:py-4 border-b border-slate-100 flex items-center justify-between bg-white shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-                    <div>
-                        <h3 id="activeChatName" class="text-xs md:text-sm font-bold text-slate-800">会话目标</h3>
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2">
+                            <h3 id="activeChatName" class="text-xs md:text-sm font-bold text-slate-800">会话目标</h3>
+                            <!-- 在线人数显示（仅公共聊天室显示） -->
+                            <span id="onlineCountBadge" class="hidden bg-green-100 text-green-700 text-[10px] px-2 py-0.5 rounded-full font-medium">
+                                👥 <span id="onlineCount">0</span> 人在线
+                            </span>
+                        </div>
                         <p id="activeChatMeta" class="text-[10px] md:text-xs text-slate-400 mt-0.5">通道就绪</p>
                     </div>
-                    <button onclick="refreshAllMessages()" class="text-xs md:text-sm text-slate-400 hover:text-slate-600 px-2 md:px-3 py-1 rounded-lg hover:bg-slate-100 transition cursor-pointer" title="刷新聊天记录">
-                        🔄 刷新
-                    </button>
+                    <div class="flex items-center space-x-1 md:space-x-2 relative">
+                        <button onclick="refreshAllMessages()" class="text-xs md:text-sm text-slate-400 hover:text-slate-600 px-2 md:px-3 py-1 rounded-lg hover:bg-slate-100 transition cursor-pointer" title="刷新聊天记录">
+                            🔄 刷新
+                        </button>
+                        <!-- 三点菜单按钮 -->
+                        <button id="chatMenuBtn" onclick="toggleChatMenu()" class="text-base text-slate-400 hover:text-slate-600 px-2 md:px-3 py-1 rounded-lg hover:bg-slate-100 transition cursor-pointer" title="更多选项">
+                            ⋮
+                        </button>
+                        <!-- 三点菜单 -->
+                        <div id="chatMenu" class="hidden absolute right-0 top-10 bg-white border border-slate-200 rounded-lg shadow-lg z-50 w-48 text-sm">
+                            <!-- 群聊菜单项 -->
+                            <div id="groupMenuItems" class="hidden">
+                                <button onclick="openGroupManagement()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
+                                    <span>⚙️</span> 群聊设置
+                                </button>
+                                <button onclick="toggleAddMemberModal(true)" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
+                                    <span>➕</span> 邀请成员加入
+                                </button>
+                                <button onclick="showGroupMembers()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
+                                    <span>👥</span> 查看成员列表
+                                </button>
+                                <hr class="my-1">
+                                <button onclick="confirmQuitGroup()" class="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 flex items-center gap-2 transition">
+                                    <span>🚪</span> 退出群聊
+                                </button>
+                            </div>
+                            <!-- 私聊菜单项 -->
+                            <div id="privateMenuItems" class="hidden">
+                                <button onclick="clearPrivateChatHistory()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
+                                    <span>🗑️</span> 清空聊天记录
+                                </button>
+                            </div>
+                            <!-- 公共菜单项 -->
+                            <div id="publicMenuItems" class="hidden">
+                                <button onclick="refreshAllMessages()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
+                                    <span>🔄</span> 刷新消息
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div id="chatBox" class="flex-1 p-3 md:p-6 overflow-y-auto space-y-3 md:space-y-4 bg-slate-50/60 no-scrollbar"></div>
@@ -146,6 +189,118 @@
             <div class="flex justify-end space-x-2 pt-2">
                 <button onclick="toggleGroupModal(false)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer">取消</button>
                 <button onclick="submitCreateGroup()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs cursor-pointer">创建群组</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 群聊管理模态框 -->
+    <div id="groupManagementModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 w-96 space-y-4 max-h-[80vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-bold text-slate-800">群聊管理</h3>
+                <button onclick="toggleGroupManagementModal(false)" class="text-xl text-slate-400 hover:text-slate-600 cursor-pointer">✕</button>
+            </div>
+
+            <!-- 群名称显示 -->
+            <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                <p class="text-xs text-slate-500 mb-1">群聊名称</p>
+                <p id="groupManagementName" class="text-sm font-semibold text-slate-800"></p>
+            </div>
+
+            <!-- 群主标示 -->
+            <div id="groupOwnerInfo" class="hidden bg-blue-50 p-3 rounded-lg border border-blue-100">
+                <p class="text-xs text-blue-600 font-medium">✓ 你是群主，可以管理此群聊</p>
+            </div>
+
+            <!-- 群主操作区域 -->
+            <div id="groupAdminActions" class="hidden space-y-3 pt-2 border-t border-slate-100">
+                <h4 class="text-xs font-semibold text-slate-700 uppercase tracking-wider">管理功能</h4>
+                
+                <!-- 修改群名 -->
+                <div class="space-y-2">
+                    <label class="block text-xs font-medium text-slate-600">修改群聊名称</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="newGroupNameInput" placeholder="输入新的群聊名称" 
+                               class="flex-1 px-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <button onclick="renameGroup()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs cursor-pointer font-medium">
+                            更新
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 发布公告 -->
+                <div class="space-y-2">
+                    <label class="block text-xs font-medium text-slate-600">群聊公告</label>
+                    <textarea id="groupAnnouncementInput" placeholder="输入群聊公告内容..." 
+                              class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                              rows="3"></textarea>
+                    <button onclick="publishAnnouncement()" class="w-full px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs cursor-pointer font-medium">
+                        📢 发布公告
+                    </button>
+                </div>
+
+                <!-- 群成员列表 -->
+                <div class="space-y-2">
+                    <label class="block text-xs font-medium text-slate-600">群成员 (<span id="memberCount">0</span>)</label>
+                    <div id="groupMembersList" class="max-h-32 overflow-y-auto border border-slate-100 rounded-lg bg-slate-50 p-2 space-y-1 text-xs">
+                    </div>
+                </div>
+
+                <!-- 解散群聊按钮 -->
+                <div class="pt-2 border-t border-slate-100">
+                    <button onclick="confirmDisbandGroup()" class="w-full px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs cursor-pointer font-medium">
+                        ⚠️ 解散群聊
+                    </button>
+                    <p class="text-[10px] text-red-500 mt-1">※ 解散后，所有成员将退出此群聊，无法恢复</p>
+                </div>
+            </div>
+
+            <!-- 非群主提示 -->
+            <div id="groupMemberInfo" class="hidden bg-slate-50 p-3 rounded-lg border border-slate-100 text-center">
+                <p class="text-xs text-slate-600">你是群成员，无法编辑群设置</p>
+                <button onclick="quitGroup()" class="w-full mt-2 px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs cursor-pointer font-medium">
+                    退出群聊
+                </button>
+            </div>
+
+            <div class="flex justify-end space-x-2 pt-4 border-t border-slate-100">
+                <button onclick="toggleGroupManagementModal(false)" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer font-medium">
+                    关闭
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 邀请成员加入群聊模态框 -->
+    <div id="addMemberModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 w-96 space-y-4 max-h-[80vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-bold text-slate-800">邀请成员加入群聊</h3>
+                <button onclick="toggleAddMemberModal(false)" class="text-xl text-slate-400 hover:text-slate-600 cursor-pointer">✕</button>
+            </div>
+
+            <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                <p class="text-xs text-slate-500 mb-1">群聊</p>
+                <p id="addMemberGroupName" class="text-sm font-semibold text-slate-800"></p>
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-slate-600 mb-2">选择要邀请的好友</label>
+                <div id="addMemberFriendsList" class="max-h-40 overflow-y-auto border border-slate-100 rounded-lg bg-slate-50 p-2 space-y-1 text-xs">
+                </div>
+            </div>
+
+            <div class="text-xs text-slate-500 bg-blue-50 p-2 rounded border border-blue-100">
+                💡 选择希望邀请加入群聊的好友，已是群成员的好友会自动跳过
+            </div>
+
+            <div class="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+                <button onclick="toggleAddMemberModal(false)" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer font-medium">
+                    取消
+                </button>
+                <button onclick="submitAddMembers()" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs cursor-pointer font-medium">
+                    邀请
+                </button>
             </div>
         </div>
     </div>
@@ -326,7 +481,19 @@
                         case "sync_data":
                             globalFriends = data.friends || [];
                             globalGroups = data.groups || [];
-                            renderSidebarList();
+                            // 保存owner信息（用于权限检查）
+                            globalGroups.forEach(g => {
+                                if (data.groups && data.groups.length > 0) {
+                                    const fullData = data.groups.find(x => x.id === g.id);
+                                    if (fullData) g.owner = fullData.owner;
+                                }
+                            });
+                            // 先自动加载所有私聊和群聊的历史消息，然后再更新侧边栏
+                            loadAllPrivateChatHistory().then(() => {
+                                renderSidebarList();
+                            }).catch(() => {
+                                renderSidebarList();
+                            });
                             break;
                         case "create_group_ok":
                             const newGroup = {
@@ -345,6 +512,43 @@
                             break;
                         case "msg":
                             routeIncomingMessage(data);
+                            break;
+                        case "rename_group_ok":
+                            console.log("群聊重命名成功", data);
+                            break;
+                        case "rename_group_err":
+                            alert("群聊重命名失败: " + (data.content || "未知错误"));
+                            break;
+                        case "publish_announcement_ok":
+                            console.log("公告发布成功", data);
+                            // 可以在聊天中显示公告信息
+                            break;
+                        case "publish_announcement_err":
+                            alert("公告发布失败: " + (data.content || "未知错误"));
+                            break;
+                        case "disband_group_ok":
+                            console.log("群聊已解散", data);
+                            break;
+                        case "disband_group_err":
+                            alert("群聊解散失败: " + (data.content || "未知错误"));
+                            break;
+                        case "quit_group_ok":
+                            console.log("已退出群聊", data);
+                            break;
+                        case "quit_group_err":
+                            alert("退出群聊失败: " + (data.content || "未知错误"));
+                            break;
+                        case "add_member_ok":
+                            console.log("成员邀请成功", data);
+                            alert(`成功邀请了 ${data.added} 位好友加入群聊`);
+                            toggleAddMemberModal(false);
+                            // 重新获取群成员列表
+                            if (activeTarget && activeTarget.type === 'group') {
+                                loadGroupMembers();
+                            }
+                            break;
+                        case "add_member_err":
+                            alert("邀请失败: " + (data.content || "未知错误"));
                             break;
                         default:
                             break;
@@ -421,6 +625,33 @@
                 }
             } catch (err) {
                 console.warn("加载历史消息失败", err);
+            }
+        }
+
+        /**
+         * 自动加载所有私聊和群聊的历史消息
+         */
+        async function loadAllPrivateChatHistory() {
+            const loadTasks = [];
+            
+            // 加载所有好友的私聊记录
+            if (globalFriends && globalFriends.length > 0) {
+                globalFriends.forEach(friend => {
+                    loadTasks.push(loadHistoryMessages('private', friend));
+                });
+            }
+            
+            // 加载所有群聊记录
+            if (globalGroups && globalGroups.length > 0) {
+                globalGroups.forEach(group => {
+                    loadTasks.push(loadHistoryMessages('group', group.id.toString()));
+                });
+            }
+            
+            // 并行加载所有消息
+            if (loadTasks.length > 0) {
+                await Promise.all(loadTasks);
+                console.log(`[聊天记录] 已自动加载 ${globalFriends.length} 个私聊和 ${globalGroups.length} 个群聊的历史消息`);
             }
         }
 
@@ -553,6 +784,23 @@
             if (!cacheMessages[sessionKey]) cacheMessages[sessionKey] = [];
             renderChatBubbles();
             renderSidebarList();
+            
+            // 显示/隐藏在线人数（仅公共聊天室显示）
+            const onlineCountBadge = document.getElementById('onlineCountBadge');
+            if (type === 'public') {
+                onlineCountBadge.classList.remove('hidden');
+                updateOnlineCount();
+                // 每10秒更新一次在线人数
+                if (window.onlineCountInterval) clearInterval(window.onlineCountInterval);
+                window.onlineCountInterval = setInterval(updateOnlineCount, 10000);
+            } else {
+                onlineCountBadge.classList.add('hidden');
+                if (window.onlineCountInterval) clearInterval(window.onlineCountInterval);
+            }
+            
+            // 关闭菜单
+            document.getElementById('chatMenu').classList.add('hidden');
+            
             // 手机上选择聊天后自动关闭侧边栏
             if (window.innerWidth < 768) {
                 toggleSidebar(false);
@@ -858,6 +1106,441 @@
             }
         }
 
+        /**
+         * 群聊管理相关函数
+         */
+
+        /**
+         * 打开群聊管理界面
+         */
+        function openGroupManagement() {
+            if (!activeTarget || activeTarget.type !== 'group') {
+                alert("请先选择一个群聊");
+                return;
+            }
+
+            const groupId = activeTarget.id;
+            const groupName = activeTarget.name;
+            const group = globalGroups.find(g => g.id.toString() === groupId);
+
+            // 显示群聊名称
+            document.getElementById('groupManagementName').innerText = groupName;
+
+            // 判断是否为群主（需要后端返回群主信息）
+            // 这里假设群主信息已从服务器获取，或者通过创建者判断
+            const isOwner = group && group.owner === currentUser; // 需要后端支持
+            
+            // 显示群主操作区域或成员信息
+            if (isOwner) {
+                document.getElementById('groupAdminActions').classList.remove('hidden');
+                document.getElementById('groupMemberInfo').classList.add('hidden');
+                document.getElementById('groupOwnerInfo').classList.remove('hidden');
+                
+                // 加载群成员列表
+                loadGroupMembers(groupId);
+            } else {
+                document.getElementById('groupAdminActions').classList.add('hidden');
+                document.getElementById('groupMemberInfo').classList.remove('hidden');
+                document.getElementById('groupOwnerInfo').classList.add('hidden');
+            }
+
+            // 清空输入框
+            document.getElementById('newGroupNameInput').value = '';
+            document.getElementById('groupAnnouncementInput').value = '';
+
+            // 显示模态框
+            document.getElementById('groupManagementModal').classList.remove('hidden');
+        }
+
+        /**
+         * 切换群聊管理模态框
+         */
+        function toggleGroupManagementModal(show) {
+            const modal = document.getElementById('groupManagementModal');
+            if (show) {
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        /**
+         * 加载群成员列表
+         */
+        async function loadGroupMembers(groupId) {
+            try {
+                const response = await fetch(`${httpUri}/api/group/${groupId}/members`, {
+                    method: 'GET',
+                    headers: authHeaders(),
+                    credentials: 'same-origin'
+                });
+                const result = await response.json();
+                if (result && Array.isArray(result.members)) {
+                    const membersList = document.getElementById('groupMembersList');
+                    membersList.innerHTML = '';
+                    result.members.forEach(member => {
+                        const div = document.createElement('div');
+                        div.className = 'flex items-center justify-between px-2 py-1 rounded bg-white border border-slate-100';
+                        div.innerHTML = `
+                            <span>${member.username}</span>
+                            <span class="text-[9px] text-slate-400">${member.is_owner ? '群主' : '成员'}</span>
+                        `;
+                        membersList.appendChild(div);
+                    });
+                    document.getElementById('memberCount').innerText = result.members.length;
+                }
+            } catch (err) {
+                console.warn("加载群成员失败", err);
+            }
+        }
+
+        /**
+         * 重命名群聊
+         */
+        function renameGroup() {
+            if (!activeTarget || activeTarget.type !== 'group') {
+                alert("请先选择一个群聊");
+                return;
+            }
+
+            const newName = document.getElementById('newGroupNameInput').value.trim();
+            if (!newName) {
+                alert("请输入新的群聊名称");
+                return;
+            }
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    action: "rename_group",
+                    group_id: activeTarget.id,
+                    new_name: newName
+                }));
+                alert("群聊名称已更新");
+                activeTarget.name = newName;
+                document.getElementById('activeChatName').innerText = newName;
+                document.getElementById('groupManagementName').innerText = newName;
+                document.getElementById('newGroupNameInput').value = '';
+                renderSidebarList();
+            } else {
+                alert("连接异常，请稍后重试");
+            }
+        }
+
+        /**
+         * 发布群聊公告
+         */
+        function publishAnnouncement() {
+            if (!activeTarget || activeTarget.type !== 'group') {
+                alert("请先选择一个群聊");
+                return;
+            }
+
+            const announcement = document.getElementById('groupAnnouncementInput').value.trim();
+            if (!announcement) {
+                alert("请输入公告内容");
+                return;
+            }
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    action: "publish_announcement",
+                    group_id: activeTarget.id,
+                    announcement: announcement
+                }));
+                alert("公告已发布");
+                document.getElementById('groupAnnouncementInput').value = '';
+            } else {
+                alert("连接异常，请稍后重试");
+            }
+        }
+
+        /**
+         * 确认解散群聊
+         */
+        function confirmDisbandGroup() {
+            if (!activeTarget || activeTarget.type !== 'group') {
+                alert("请先选择一个群聊");
+                return;
+            }
+
+            const confirmResult = confirm(
+                `确定要解散群聊 "${activeTarget.name}" 吗？\n\n` +
+                "此操作不可撤销，所有群成员将被移出，聊天记录将被保留。"
+            );
+
+            if (confirmResult) {
+                disbandGroup();
+            }
+        }
+
+        /**
+         * 解散群聊
+         */
+        function disbandGroup() {
+            if (!activeTarget || activeTarget.type !== 'group') {
+                alert("请先选择一个群聊");
+                return;
+            }
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    action: "disband_group",
+                    group_id: activeTarget.id
+                }));
+                alert("群聊已解散");
+                toggleGroupManagementModal(false);
+                
+                // 移除该群聊的缓存
+                const sessionKey = `group:${activeTarget.id}`;
+                delete cacheMessages[sessionKey];
+                globalGroups = globalGroups.filter(g => g.id.toString() !== activeTarget.id);
+                
+                // 返回公共聊天室
+                selectActiveChat('public', 'global', '公共聊天室');
+                loadHistoryMessages('public', 'global');
+                renderSidebarList();
+            } else {
+                alert("连接异常，请稍后重试");
+            }
+        }
+
+        /**
+         * 切换菜单显示/隐藏
+         */
+        function toggleChatMenu() {
+            const menu = document.getElementById('chatMenu');
+            const isHidden = menu.classList.contains('hidden');
+            
+            if (isHidden) {
+                menu.classList.remove('hidden');
+                // 根据当前chat类型显示相应的菜单项
+                if (activeTarget) {
+                    document.getElementById('groupMenuItems').classList.add('hidden');
+                    document.getElementById('privateMenuItems').classList.add('hidden');
+                    document.getElementById('publicMenuItems').classList.add('hidden');
+                    
+                    if (activeTarget.type === 'group') {
+                        document.getElementById('groupMenuItems').classList.remove('hidden');
+                    } else if (activeTarget.type === 'private') {
+                        document.getElementById('privateMenuItems').classList.remove('hidden');
+                    } else if (activeTarget.type === 'public') {
+                        document.getElementById('publicMenuItems').classList.remove('hidden');
+                    }
+                }
+            } else {
+                menu.classList.add('hidden');
+            }
+        }
+
+        /**
+         * 点击菜单外时关闭菜单
+         */
+        document.addEventListener('click', function(e) {
+            const chatMenu = document.getElementById('chatMenu');
+            const chatMenuBtn = document.getElementById('chatMenuBtn');
+            if (chatMenu && chatMenuBtn && !chatMenu.contains(e.target) && !chatMenuBtn.contains(e.target)) {
+                chatMenu.classList.add('hidden');
+            }
+        });
+
+        /**
+         * 切换邀请成员模态框
+         */
+        function toggleAddMemberModal(show) {
+            const modal = document.getElementById('addMemberModal');
+            if (show && activeTarget && activeTarget.type === 'group') {
+                document.getElementById('addMemberGroupName').innerText = activeTarget.name;
+                loadMembersForInvite();
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        /**
+         * 加载可邀请的好友列表（排除已是群成员的）
+         */
+        async function loadMembersForInvite() {
+            if (!activeTarget || activeTarget.type !== 'group') return;
+
+            try {
+                // 获取当前群成员列表
+                const response = await fetch(`${httpUri}/api/group/${activeTarget.id}/members`, {
+                    method: 'GET',
+                    headers: authHeaders(),
+                    credentials: 'same-origin'
+                });
+                const data = await response.json();
+                const currentMembers = new Set(data.members ? data.members.map(m => m.username) : []);
+
+                // 获取可邀请的好友列表
+                const availableFriends = globalFriends.filter(f => !currentMembers.has(f));
+
+                const container = document.getElementById('addMemberFriendsList');
+                container.innerHTML = '';
+
+                if (availableFriends.length === 0) {
+                    container.innerHTML = '<div class="text-slate-500 py-2 text-center">所有好友都已是群成员</div>';
+                    return;
+                }
+
+                availableFriends.forEach(friend => {
+                    const label = document.createElement('label');
+                    label.className = 'flex items-center space-x-2 p-1 hover:bg-slate-100 rounded cursor-pointer';
+                    label.innerHTML = `
+                        <input type="checkbox" value="${friend}" class="friend-invite-checkbox cursor-pointer">
+                        <span>${friend}</span>
+                    `;
+                    container.appendChild(label);
+                });
+            } catch (err) {
+                console.warn('加载可邀请好友失败', err);
+                document.getElementById('addMemberFriendsList').innerHTML = '<div class="text-red-500 py-2 text-center">加载失败</div>';
+            }
+        }
+
+        /**
+         * 提交邀请成员
+         */
+        function submitAddMembers() {
+            if (!activeTarget || activeTarget.type !== 'group') {
+                alert("请先选择一个群聊");
+                return;
+            }
+
+            const checkboxes = document.querySelectorAll('.friend-invite-checkbox:checked');
+            const selectedMembers = Array.from(checkboxes).map(cb => cb.value);
+
+            if (selectedMembers.length === 0) {
+                alert("请至少选择一位好友");
+                return;
+            }
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    action: "add_member_to_group",
+                    group_id: activeTarget.id,
+                    members: selectedMembers
+                }));
+                // 关闭菜单
+                toggleChatMenu();
+            } else {
+                alert("连接异常，请稍后重试");
+            }
+        }
+
+        /**
+         * 显示群成员列表
+         */
+        async function showGroupMembers() {
+            if (!activeTarget || activeTarget.type !== 'group') return;
+
+            try {
+                const response = await fetch(`${httpUri}/api/group/${activeTarget.id}/members`, {
+                    method: 'GET',
+                    headers: authHeaders(),
+                    credentials: 'same-origin'
+                });
+                const data = await response.json();
+                const members = data.members || [];
+
+                let memberList = '📍 群成员列表：\n\n';
+                members.forEach((m, index) => {
+                    const badge = m.is_owner ? ' 👑 (群主)' : '';
+                    memberList += `${index + 1}. ${m.username}${badge}\n`;
+                });
+
+                alert(memberList);
+            } catch (err) {
+                console.warn('获取群成员失败', err);
+                alert('获取群成员失败');
+            }
+        }
+
+        /**
+         * 清空私聊记录
+         */
+        function clearPrivateChatHistory() {
+            if (!activeTarget || activeTarget.type !== 'private') {
+                alert("请先选择一个私聊");
+                return;
+            }
+
+            const confirmed = confirm(`确定要清空与 "${activeTarget.name}" 的聊天记录吗？\n※ 此操作仅清除本地记录，对方的记录不会被删除`);
+            if (confirmed) {
+                const sessionKey = `private:${activeTarget.id}`;
+                cacheMessages[sessionKey] = [];
+                renderChatBubbles();
+                alert("已清空聊天记录");
+            }
+        }
+
+        /**
+         * 确认退出群聊
+         */
+        function confirmQuitGroup() {
+            if (!activeTarget || activeTarget.type !== 'group') {
+                alert("请先选择一个群聊");
+                return;
+            }
+
+            const confirmed = confirm(`确定要退出群聊 "${activeTarget.name}" 吗？`);
+            if (confirmed) {
+                quitGroup();
+            }
+        }
+
+        /**
+         * 更新在线人数
+         */
+        async function updateOnlineCount() {
+            try {
+                const response = await fetch(`${httpUri}/api/online-users`, {
+                    method: 'GET',
+                    headers: authHeaders(),
+                    credentials: 'same-origin'
+                });
+                const data = await response.json();
+                document.getElementById('onlineCount').innerText = data.online_count || 0;
+            } catch (err) {
+                console.warn('获取在线人数失败', err);
+            }
+        }
+
+        /**
+         * 退出群聊
+         */
+        function quitGroup() {
+            if (!activeTarget || activeTarget.type !== 'group') {
+                alert("请先选择一个群聊");
+                return;
+            }
+
+            const confirmResult = confirm(`确定要退出群聊 "${activeTarget.name}" 吗？`);
+
+            if (confirmResult) {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        action: "quit_group",
+                        group_id: activeTarget.id
+                    }));
+                    alert("已退出群聊");
+                    toggleGroupManagementModal(false);
+                    
+                    // 移除该群聊的缓存
+                    const sessionKey = `group:${activeTarget.id}`;
+                    delete cacheMessages[sessionKey];
+                    globalGroups = globalGroups.filter(g => g.id.toString() !== activeTarget.id);
+                    
+                    // 返回公共聊天室
+                    selectActiveChat('public', 'global', '公共聊天室');
+                    loadHistoryMessages('public', 'global');
+                    renderSidebarList();
+                } else {
+                    alert("连接异常，请稍后重试");
+                }
+            }
+        }
 
     </script>
 </body>
