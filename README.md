@@ -7,6 +7,10 @@ ps：管理还有另一个软件：https://github.com/stormsnow2233/Chatbox-back
 
 网页还行的其实，后面会制作相应的客户端
 
+## ✈ 快速开始
+
+- [QUICK-START.md](QUICK-START.md) - 快速开始
+
 ## 🔗 相关文档
 
 - [LATEST-UPDATES.md](LATEST-UPDATES.md) - 详细更新说明
