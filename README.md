@@ -6,3 +6,10 @@ ps：管理还有另一个软件：https://github.com/stormsnow2233/Chatbox-back
 但是需要开启本后端才可使用
 
 网页还行的其实，后面会制作相应的客户端
+
+## 🔗 相关文档
+
+- [LATEST-UPDATES.md](LATEST-UPDATES.md) - 详细更新说明
+- [UPDATE-NOTES.md](UPDATE-NOTES.md) - 后端API规范
+- [IMPLEMENTATION-CHECKLIST.md](IMPLEMENTATION-CHECKLIST.md) - 实现检查清单
+- [README-mobile-adapt.md](README-mobile-adapt.md) - 移动适配文档
