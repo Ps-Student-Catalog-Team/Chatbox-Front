@@ -109,6 +109,15 @@ func initDB() {
 		log.Fatalf("创建users表失败: %v", err)
 	}
 
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS session_tokens (
+		token TEXT PRIMARY KEY,
+		username TEXT NOT NULL,
+		created_at INTEGER DEFAULT (strftime('%s','now'))
+	);`)
+	if err != nil {
+		log.Fatalf("创建session_tokens表失败: %v", err)
+	}
+
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS friends (
 		username TEXT,
 		friend_username TEXT,
@@ -162,6 +171,23 @@ func getIP(r *http.Request) string {
 		return "127.0.0.1"
 	}
 	return ip
+}
+
+func generateToken() string {
+	randBytes := make([]byte, 16)
+	_, _ = rand.Read(randBytes)
+	return hex.EncodeToString(randBytes)
+}
+
+func saveSessionToken(username, token string) error {
+	_, err := db.Exec("INSERT OR REPLACE INTO session_tokens (token, username, created_at) VALUES (?, ?, ?)", token, username, time.Now().Unix())
+	return err
+}
+
+func getUsernameByToken(token string) (string, error) {
+	var username string
+	err := db.QueryRow("SELECT username FROM session_tokens WHERE token = ?", token).Scan(&username)
+	return username, err
 }
 
 func checkAdminSecret(r *http.Request) bool {
@@ -244,7 +270,35 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			clients[user] = conn
 			stateMutex.Unlock()
 
-			conn.WriteJSON(map[string]string{"type": "auth_ok", "avatar_url": dbAvatar})
+			token := generateToken()
+			_ = saveSessionToken(user, token)
+			conn.WriteJSON(map[string]string{"type": "auth_ok", "username": user, "token": token, "avatar_url": dbAvatar})
+
+		case "resume":
+			if authenticatedUser != "" {
+				continue
+			}
+			token, _ := payload["token"].(string)
+			if token == "" {
+				conn.WriteJSON(map[string]string{"type": "auth_err", "content": "凭证不能为空"})
+				continue
+			}
+			user, err := getUsernameByToken(token)
+			if err != nil {
+				conn.WriteJSON(map[string]string{"type": "auth_err", "content": "无效的登录凭证"})
+				continue
+			}
+			var dbAvatar string
+			if err := db.QueryRow("SELECT avatar_url FROM users WHERE username = ?", user).Scan(&dbAvatar); err != nil {
+				conn.WriteJSON(map[string]string{"type": "auth_err", "content": "用户不存在"})
+				continue
+			}
+			stateMutex.Lock()
+			authenticatedUser = user
+			clients[user] = conn
+			stateMutex.Unlock()
+			conn.WriteJSON(map[string]string{"type": "auth_ok", "username": user, "token": token, "avatar_url": dbAvatar})
+			sendSyncData(user)
 
 		case "sync":
 			if authenticatedUser == "" {
@@ -287,6 +341,27 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				sendSyncData(target)
 			} else {
 				stateMutex.RUnlock()
+			}
+
+		case "delete_friend":
+			if authenticatedUser == "" {
+				continue
+			}
+			target, _ := payload["target_user"].(string)
+			if target == "" || target == authenticatedUser {
+				continue
+			}
+
+			_, _ = db.Exec("DELETE FROM friends WHERE username = ? AND friend_username = ?", authenticatedUser, target)
+			_, _ = db.Exec("DELETE FROM friends WHERE username = ? AND friend_username = ?", target, authenticatedUser)
+
+			conn.WriteJSON(map[string]string{"type": "delete_friend_ok", "target_user": target})
+			sendSyncData(authenticatedUser)
+			stateMutex.RLock()
+			_, online := clients[target]
+			stateMutex.RUnlock()
+			if online {
+				sendSyncData(target)
 			}
 
 		case "create_group":
@@ -373,6 +448,32 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				AvatarURL:  avatar,
 			}
 			broadcastMessage(msg)
+
+		case "withdraw_message":
+			if authenticatedUser == "" {
+				continue
+			}
+			messageIDFloat, ok := payload["message_id"].(float64)
+			if !ok {
+				continue
+			}
+			messageID := int64(messageIDFloat)
+
+			var targetType, targetID, sender string
+			err := db.QueryRow("SELECT target_type, target_id, sender FROM messages WHERE id = ?", messageID).Scan(&targetType, &targetID, &sender)
+			if err != nil || sender != authenticatedUser {
+				conn.WriteJSON(map[string]string{"type": "withdraw_message_err", "content": "仅允许撤回自己的消息"})
+				continue
+			}
+
+			_, err = db.Exec("DELETE FROM messages WHERE id = ?", messageID)
+			if err != nil {
+				conn.WriteJSON(map[string]string{"type": "withdraw_message_err", "content": "撤回失败，请稍后重试"})
+				continue
+			}
+
+			conn.WriteJSON(map[string]interface{}{"type": "withdraw_message_ok", "message_id": messageID, "target_type": targetType, "target_id": targetID})
+			broadcastWithdraw(targetType, targetID, messageID, authenticatedUser)
 
 		case "rename_group":
 			if authenticatedUser == "" {
@@ -658,6 +759,47 @@ func broadcastMessage(msg Message) {
 		if msg.Sender != msg.TargetID {
 			if conn, online := clients[msg.TargetID]; online {
 				_ = conn.WriteJSON(msgWithType)
+			}
+		}
+	}
+}
+
+func broadcastWithdraw(targetType, targetID string, messageID int64, sender string) {
+	stateMutex.RLock()
+	defer stateMutex.RUnlock()
+
+	payload := map[string]interface{}{
+		"type":        "withdraw_message",
+		"message_id":  messageID,
+		"target_type": targetType,
+		"target_id":   targetID,
+	}
+
+	switch targetType {
+	case "public":
+		for _, conn := range clients {
+			_ = conn.WriteJSON(payload)
+		}
+	case "group":
+		gID, _ := strconv.Atoi(targetID)
+		rows, err := db.Query("SELECT username FROM group_members WHERE group_id = ?", gID)
+		if err == nil {
+			for rows.Next() {
+				var member string
+				_ = rows.Scan(&member)
+				if conn, online := clients[member]; online {
+					_ = conn.WriteJSON(payload)
+				}
+			}
+			rows.Close()
+		}
+	case "private":
+		if conn, online := clients[targetID]; online {
+			_ = conn.WriteJSON(payload)
+		}
+		if sender != targetID {
+			if conn, online := clients[sender]; online {
+				_ = conn.WriteJSON(payload)
 			}
 		}
 	}

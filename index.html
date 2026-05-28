@@ -17,7 +17,6 @@
 <body class="bg-slate-100 w-full flex items-center justify-center font-sans antialiased select-none" style="height: 100dvh; height: 100vh;">
 
     <style>
-        /* 紧急样式 - 确保body完整填充 */
         body {
             margin: 0;
             padding: 0;
@@ -29,6 +28,82 @@
             height: 100dvh;
             height: 100vh;
             width: 100vw;
+        }
+
+        .fade-in-up {
+            animation: fadeInUp 280ms ease-out both;
+        }
+
+        .chat-bubble {
+            animation: bubbleIn 180ms ease-out both;
+        }
+
+        .chat-bubble.pending {
+            border: 1px dashed rgba(255,255,255,0.5);
+            opacity: 0.84;
+            filter: saturate(0.85);
+        }
+
+        .chat-bubble.own-message {
+            cursor: pointer;
+            transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+        }
+
+        .chat-bubble.own-message:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 18px rgba(15, 23, 42, 0.14);
+        }
+
+        .withdraw-option {
+            position: absolute;
+            left: -76px;
+            top: 50%;
+            transform: translateY(-50%) translateX(-10px);
+            background: #ef4444;
+            color: #fff;
+            border: none;
+            border-radius: 999px;
+            padding: 0.45rem 0.85rem;
+            font-size: 0.72rem;
+            line-height: 1;
+            cursor: pointer;
+            box-shadow: 0 16px 30px rgba(15, 23, 42, 0.18);
+            opacity: 0;
+            transition: opacity 160ms ease, transform 160ms ease;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .withdraw-option.show {
+            opacity: 1;
+            transform: translateY(-50%) translateX(0);
+            pointer-events: auto;
+        }
+
+        .withdraw-option.mobile {
+            left: auto;
+            right: 0;
+            top: auto;
+            bottom: 100%;
+            transform: translateY(-10px);
+        }
+
+        .withdraw-option.mobile.show {
+            transform: translateY(0);
+        }
+
+        .message-wrapper {
+            position: relative;
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes bubbleIn {
+            from { opacity: 0; transform: translateY(8px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
         }
     </style>
 
@@ -143,6 +218,9 @@
                                 <button onclick="clearPrivateChatHistory()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
                                     <span>🗑️</span> 清空聊天记录
                                 </button>
+                                <button onclick="deleteFriend()" class="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 flex items-center gap-2 transition">
+                                    <span>🗑️</span> 删除好友
+                                </button>
                             </div>
                             <!-- 公共菜单项 -->
                             <div id="publicMenuItems" class="hidden">
@@ -190,6 +268,25 @@
             <div class="flex justify-end space-x-2 pt-2 border-t border-slate-100">
                 <button onclick="toggleGroupModal(false)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer font-medium">取消</button>
                 <button onclick="submitCreateGroup()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs cursor-pointer font-medium">创建群组</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加好友模态框 -->
+    <div id="addFriendModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0">
+        <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-80 space-y-4 max-h-[80vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-bold text-slate-800">添加好友</h3>
+                <button onclick="toggleAddFriendModal(false)" class="text-xl text-slate-400 hover:text-slate-600 cursor-pointer">✕</button>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">好友账号</label>
+                <input id="newFriendNameInput" type="text" placeholder="请输入好友账号名称" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <p id="addFriendError" class="text-xs text-red-500 min-h-[16px] mt-2"></p>
+            </div>
+            <div class="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+                <button onclick="toggleAddFriendModal(false)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer font-medium">取消</button>
+                <button onclick="submitAddFriend()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs cursor-pointer font-medium">添加好友</button>
             </div>
         </div>
     </div>
@@ -514,6 +611,16 @@
                         case "msg":
                             routeIncomingMessage(data);
                             break;
+                        case "withdraw_message":
+                            if (data && data.message_id) {
+                                removeMessageFromCache(Number(data.message_id), data.target_type, data.target_id);
+                            }
+                            break;
+                        case "withdraw_message_ok":
+                            if (data && data.message_id) {
+                                removeMessageFromCache(Number(data.message_id), data.target_type, data.target_id);
+                            }
+                            break;
                         case "rename_group_ok":
                             console.log("群聊重命名成功", data);
                             break;
@@ -679,7 +786,7 @@
                 title.innerText = "通讯录管理";
                 actions.innerHTML = `
                     <div class="flex items-center space-x-2">
-                        <button onclick="promptAddFriend()" class="text-xs bg-white px-2 py-1 rounded-lg shadow-sm border border-slate-200 text-blue-600 hover:bg-blue-50 transition cursor-pointer">添加好友</button>
+                        <button onclick="toggleAddFriendModal(true)" class="text-xs bg-white px-2 py-1 rounded-lg shadow-sm border border-slate-200 text-blue-600 hover:bg-blue-50 transition cursor-pointer">添加好友</button>
                         <button onclick="toggleGroupModal(true)" class="text-xs bg-white px-2 py-1 rounded-lg shadow-sm border border-slate-200 text-blue-600 hover:bg-blue-50 transition cursor-pointer">创建群组</button>
                     </div>
                 `;
@@ -799,7 +906,7 @@
 
         function buildMessageBubble(msg, isMe) {
             const wrapper = document.createElement('div');
-            wrapper.className = 'flex flex-col space-y-0.5 md:space-y-1';
+            wrapper.className = 'flex flex-col space-y-0.5 md:space-y-1 message-wrapper';
             if (msg.timestamp) {
                 const timeLabel = document.createElement('span');
                 timeLabel.className = 'text-[8px] md:text-[10px] text-slate-400 px-1';
@@ -820,6 +927,9 @@
 
             const bubble = document.createElement('div');
             bubble.className = `px-3 md:px-4 py-1.5 md:py-2 rounded-2xl text-xs md:text-sm break-all shadow-sm transition-fast ${isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-slate-100'} chat-bubble`;
+            if (msg.pending) {
+                bubble.classList.add('pending');
+            }
             if (msg.content && msg.content.startsWith('/uploads/')) {
                 const img = document.createElement('img');
                 img.src = httpUri + msg.content;
@@ -829,8 +939,57 @@
             } else {
                 bubble.innerText = msg.content || '[空消息]';
             }
+
+            if (isMe && !msg.pending) {
+                bubble.classList.add('own-message');
+                const isMobile = window.innerWidth < 768;
+
+                let longPressTimer = null;
+                const showOption = () => {
+                    toggleWithdrawOption(wrapper, msg, isMobile);
+                };
+                const startLongPress = () => {
+                    longPressTimer = setTimeout(showOption, 600);
+                };
+                const cancelLongPress = () => {
+                    if (longPressTimer) {
+                        clearTimeout(longPressTimer);
+                        longPressTimer = null;
+                    }
+                };
+
+                bubble.addEventListener('click', (e) => {
+                    if (!isMobile) {
+                        e.stopPropagation();
+                        toggleWithdrawOption(wrapper, msg, false);
+                    }
+                });
+                bubble.addEventListener('touchstart', startLongPress);
+                bubble.addEventListener('touchend', cancelLongPress);
+                bubble.addEventListener('touchcancel', cancelLongPress);
+                bubble.addEventListener('touchmove', cancelLongPress);
+            }
+
             wrapper.appendChild(bubble);
             return wrapper;
+        }
+
+        function appendPendingMessage(content) {
+            if (!activeTarget) return;
+            const sessionKey = `${activeTarget.type}:${activeTarget.id}`;
+            if (!cacheMessages[sessionKey]) cacheMessages[sessionKey] = [];
+            const pendingMsg = {
+                id: -Date.now(),
+                target_type: activeTarget.type,
+                target_id: activeTarget.id,
+                sender: currentUser,
+                content: content,
+                timestamp: Math.floor(Date.now() / 1000),
+                avatar_url: currentAvatar.url || '',
+                pending: true
+            };
+            cacheMessages[sessionKey].push(pendingMsg);
+            renderChatBubbles();
         }
 
         function sendMessage() {
@@ -855,6 +1014,7 @@
                 content: text
             };
             if (ws && ws.readyState === WebSocket.OPEN) {
+                appendPendingMessage(text);
                 try {
                     ws.send(JSON.stringify(payload));
                     input.value = "";
@@ -864,6 +1024,72 @@
                 }
             } else {
                 alert("连接已断开，请刷新页面重试");
+            }
+        }
+
+        function toggleWithdrawOption(wrapper, msg, isMobile) {
+            hideWithdrawOptions();
+            const existing = wrapper.querySelector('.withdraw-option');
+            if (existing) {
+                existing.remove();
+            }
+            const option = document.createElement('button');
+            option.type = 'button';
+            option.className = 'withdraw-option';
+            if (isMobile) {
+                option.classList.add('mobile');
+            }
+            option.innerText = '撤回';
+            option.onclick = (e) => {
+                e.stopPropagation();
+                withdrawMessage(msg);
+            };
+            wrapper.appendChild(option);
+            requestAnimationFrame(() => option.classList.add('show'));
+            option._hideTimer = setTimeout(() => {
+                hideWithdrawOption(option);
+            }, 4000);
+        }
+
+        function hideWithdrawOption(option) {
+            if (!option) return;
+            clearTimeout(option._hideTimer);
+            option.classList.remove('show');
+            setTimeout(() => {
+                if (option.parentElement) {
+                    option.remove();
+                }
+            }, 200);
+        }
+
+        function hideWithdrawOptions() {
+            document.querySelectorAll('.withdraw-option').forEach(option => hideWithdrawOption(option));
+        }
+
+        function withdrawMessage(msg) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('撤回失败：未连接到服务器');
+                return;
+            }
+            if (!msg || !msg.id) {
+                alert('撤回失败：消息不存在');
+                return;
+            }
+            ws.send(JSON.stringify({
+                action: 'withdraw_message',
+                message_id: msg.id,
+                target_type: msg.target_type,
+                target_id: msg.target_id
+            }));
+            hideWithdrawOptions();
+        }
+
+        function removeMessageFromCache(messageId, targetType, targetId) {
+            const sessionKey = `${targetType}:${targetId}`;
+            if (!cacheMessages[sessionKey]) return;
+            cacheMessages[sessionKey] = cacheMessages[sessionKey].filter(m => m.id !== messageId);
+            if (activeTarget && `${activeTarget.type}:${activeTarget.id}` === sessionKey) {
+                renderChatBubbles();
             }
         }
 
@@ -909,6 +1135,7 @@
                         content: result.url
                     };
                     if (ws && ws.readyState === WebSocket.OPEN) {
+                        appendPendingMessage(result.url);
                         ws.send(JSON.stringify(payload));
                     } else {
                         alert("图片上传成功，但 WebSocket 未连接，无法发送消息内容");
@@ -962,15 +1189,66 @@
         }
 
         function promptAddFriend() {
-            const friendName = prompt("请输入要添加的用户账号名称：");
-            if (!friendName || friendName.trim() === currentUser) {
-                if(friendName === currentUser) alert("不能添加自己为好友");
+            toggleAddFriendModal(true);
+        }
+
+        function toggleAddFriendModal(show) {
+            const modal = document.getElementById('addFriendModal');
+            const error = document.getElementById('addFriendError');
+            if (show) {
+                modal.classList.remove('hidden');
+                document.getElementById('newFriendNameInput').value = "";
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    error.innerText = "";
+                } else {
+                    error.innerText = "WebSocket 未连接，请稍后重试。";
+                }
+            } else {
+                modal.classList.add('hidden');
+                error.innerText = "";
+            }
+        }
+
+        function submitAddFriend() {
+            const friendName = document.getElementById('newFriendNameInput').value.trim();
+            const error = document.getElementById('addFriendError');
+            error.innerText = "";
+            if (!friendName) {
+                error.innerText = "请输入好友账号名称。";
+                return;
+            }
+            if (friendName === currentUser) {
+                error.innerText = "不能添加自己为好友。";
                 return;
             }
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ action: "add_friend", target_user: friendName.trim() }));
+                ws.send(JSON.stringify({ action: "add_friend", target_user: friendName }));
+                toggleAddFriendModal(false);
             } else {
-                alert("连接异常，请稍后重试");
+                error.innerText = "连接异常，请稍后重试。";
+            }
+        }
+
+        function deleteFriend() {
+            if (!activeTarget || activeTarget.type !== 'private') {
+                alert("请先选择一个好友私聊");
+                return;
+            }
+            const targetUser = activeTarget.id;
+            const confirmed = confirm(`确定要删除好友 ${targetUser} 吗？`);
+            if (!confirmed) return;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ action: "delete_friend", target_user: targetUser }));
+                globalFriends = globalFriends.filter(f => f !== targetUser);
+                delete cacheMessages[`private:${targetUser}`];
+                toggleChatMenu();
+                if (activeTarget && activeTarget.type === 'private' && activeTarget.id === targetUser) {
+                    selectActiveChat('public', 'global', '公共聊天室');
+                    loadHistoryMessages('public', 'global');
+                }
+                renderSidebarList();
+            } else {
+                alert("连接异常，请稍后重试。");
             }
         }
 
@@ -1286,6 +1564,7 @@
             if (chatMenu && chatMenuBtn && !chatMenu.contains(e.target) && !chatMenuBtn.contains(e.target)) {
                 chatMenu.classList.add('hidden');
             }
+            hideWithdrawOptions();
         });
 
         /**
