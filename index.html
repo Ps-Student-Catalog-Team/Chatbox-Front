@@ -985,10 +985,25 @@
                 const listContainer = document.getElementById('modalFriendsChecklist');
                 listContainer.innerHTML = "";
                 globalFriends.forEach(f => {
-                    const label = document.createElement('label');
-                    label.className = "flex items-center space-x-2 py-1 cursor-pointer text-xs";
-                    label.innerHTML = `<input type="checkbox" value="${f}" class="rounded text-blue-600 w-3.5 h-3.5"> <span>${f}</span>`;
-                    listContainer.appendChild(label);
+                    const item = document.createElement('div');
+                    item.className = "group-invite-item flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 cursor-pointer text-xs";
+                    item.dataset.username = f;
+                    item.innerHTML = `
+                        <span>${f}</span>
+                        <span class="invite-tag text-slate-500">点击选中</span>
+                    `;
+                    item.addEventListener('click', () => {
+                        const tag = item.querySelector('.invite-tag');
+                        item.classList.toggle('selected');
+                        if (item.classList.contains('selected')) {
+                            item.classList.add('bg-blue-50', 'border-blue-300');
+                            tag.innerText = '已选';
+                        } else {
+                            item.classList.remove('bg-blue-50', 'border-blue-300');
+                            tag.innerText = '点击选中';
+                        }
+                    });
+                    listContainer.appendChild(item);
                 });
                 document.getElementById('newGroupName').value = "";
             } else {
@@ -1002,12 +1017,12 @@
                 alert("群聊名称不能为空");
                 return;
             }
-            const checkboxes = document.querySelectorAll('#modalFriendsChecklist input[type="checkbox"]:checked');
-            if (checkboxes.length < 2) {
+            const selectedItems = document.querySelectorAll('#modalFriendsChecklist .group-invite-item.selected');
+            if (selectedItems.length < 2) {
                 alert("至少需选择 2 位好友才能创建群组");
                 return;
             }
-            const members = Array.from(checkboxes).map(cb => cb.value);
+            const members = Array.from(selectedItems).map(item => item.dataset.username);
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
                     action: "create_group",
@@ -1315,13 +1330,25 @@
                 }
 
                 availableFriends.forEach(friend => {
-                    const label = document.createElement('label');
-                    label.className = 'flex items-center space-x-2 p-1 hover:bg-slate-100 rounded cursor-pointer';
-                    label.innerHTML = `
-                        <input type="checkbox" value="${friend}" class="friend-invite-checkbox cursor-pointer">
+                    const item = document.createElement('div');
+                    item.className = 'friend-invite-item flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 cursor-pointer text-sm';
+                    item.setAttribute('data-username', friend);
+                    item.innerHTML = `
                         <span>${friend}</span>
+                        <span class="invite-tag text-slate-500 text-xs">点击选中</span>
                     `;
-                    container.appendChild(label);
+                    item.addEventListener('click', () => {
+                        const tag = item.querySelector('.invite-tag');
+                        item.classList.toggle('selected');
+                        if (item.classList.contains('selected')) {
+                            item.classList.add('bg-blue-50', 'border-blue-300');
+                            tag.innerText = '已选';
+                        } else {
+                            item.classList.remove('bg-blue-50', 'border-blue-300');
+                            tag.innerText = '点击选中';
+                        }
+                    });
+                    container.appendChild(item);
                 });
             } catch (err) {
                 console.warn('加载可邀请好友失败', err);
@@ -1338,8 +1365,8 @@
                 return;
             }
 
-            const checkboxes = document.querySelectorAll('.friend-invite-checkbox:checked');
-            const selectedMembers = Array.from(checkboxes).map(cb => cb.value);
+            const selectedItems = document.querySelectorAll('.friend-invite-item.selected');
+            const selectedMembers = Array.from(selectedItems).map(item => item.dataset.username);
 
             if (selectedMembers.length === 0) {
                 alert("请至少选择一位好友");
