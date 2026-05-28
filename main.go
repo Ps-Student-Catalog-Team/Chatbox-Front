@@ -190,6 +190,18 @@ func getUsernameByToken(token string) (string, error) {
 	return username, err
 }
 
+func getTokenFromHeader(r *http.Request) string {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return ""
+	}
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		return ""
+	}
+	return strings.TrimSpace(parts[1])
+}
+
 func checkAdminSecret(r *http.Request) bool {
 	secret := r.URL.Query().Get("secret")
 	if secret == adminSecret {
@@ -814,14 +826,37 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	targetType := r.URL.Query().Get("type")
 	targetID := r.URL.Query().Get("id")
-	limit := r.URL.Query().Get("limit")
-	if limit == "" {
-		limit = "100"
+	limitStr := r.URL.Query().Get("limit")
+	if limitStr == "" {
+		limitStr = "100"
+	}
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit <= 0 {
+		limit = 100
 	}
 
-	rows, err := db.Query(`SELECT id, target_type, target_id, sender, content, timestamp, avatar_url 
-		FROM messages WHERE target_type = ? AND target_id = ? 
-		ORDER BY id DESC LIMIT ?`, targetType, targetID, limit)
+	var rows *sql.Rows
+	if targetType == "private" {
+		currentUser := ""
+		token := getTokenFromHeader(r)
+		if token != "" {
+			currentUser, _ = getUsernameByToken(token)
+		}
+		if currentUser == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		rows, err = db.Query(`SELECT id, target_type, target_id, sender, content, timestamp, avatar_url
+			FROM messages
+			WHERE target_type = 'private' AND ((target_id = ? AND sender = ?) OR (target_id = ? AND sender = ?))
+			ORDER BY id DESC LIMIT ?`, targetID, currentUser, currentUser, targetID, limit)
+	} else {
+		rows, err = db.Query(`SELECT id, target_type, target_id, sender, content, timestamp, avatar_url
+			FROM messages WHERE target_type = ? AND target_id = ?
+			ORDER BY id DESC LIMIT ?`, targetType, targetID, limit)
+	}
+
 	var msgs []Message
 	if err == nil {
 		for rows.Next() {
@@ -830,7 +865,6 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 			msgs = append(msgs, m)
 		}
 		rows.Close()
-		// 反转顺序，使最老的消息在前
 		for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
 			msgs[i], msgs[j] = msgs[j], msgs[i]
 		}

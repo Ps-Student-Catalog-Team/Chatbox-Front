@@ -101,6 +101,9 @@ function routeIncomingMessage(msg) {
         sessionKey = `private:${chatPartner}`;
     }
     if (!cacheMessages[sessionKey]) cacheMessages[sessionKey] = [];
+    cacheMessages[sessionKey] = cacheMessages[sessionKey].filter(m => {
+        return !(m.id < 0 && m.sender === msg.sender && m.content === msg.content && m.target_type === msg.target_type && m.target_id === msg.target_id);
+    });
     if (!cacheMessages[sessionKey].some(m => m.id === msg.id)) {
         cacheMessages[sessionKey].push(msg);
         if (cacheMessages[sessionKey].length > 200) cacheMessages[sessionKey].shift();
