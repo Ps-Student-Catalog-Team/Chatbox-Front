@@ -45,20 +45,22 @@
         }
 
         .avatar {
-            width: 60px;
-            height: 60px;
+            width: 72px;
+            height: 72px;
             border-radius: 50%;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
-            font-size: 24px;
-            font-weight: bold;
-            object-fit: cover;
+            font-size: 28px;
+            font-weight: 700;
+            background-size: cover;
+            background-position: center;
             cursor: pointer;
-            border: 3px solid #f0f0f0;
-            transition: transform 0.2s;
+            border: 3px solid #fff;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+            transition: transform 0.18s ease;
         }
 
         .avatar:hover {
@@ -184,19 +186,53 @@
         }
 
         .btn-back {
-            background: #f0f0f0;
-            color: #333;
+            background: #f8fafc;
+            color: #374151;
             position: absolute;
-            top: 20px;
-            left: 20px;
-            width: 36px;
-            height: 36px;
+            top: 18px;
+            left: 18px;
+            width: 40px;
+            height: 40px;
             padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+            transition: transform 220ms cubic-bezier(.2,.8,.2,1), background 200ms ease, box-shadow 200ms ease;
+            will-change: transform;
         }
 
         .btn-back:hover {
-            background: #e0e0e0;
+            transform: translateY(-4px) rotate(-6deg) scale(1.02);
+            background: linear-gradient(90deg, #ffffff, #f3f4f6);
+            box-shadow: 0 10px 26px rgba(0,0,0,0.12);
         }
+
+        .btn-back:active {
+            transform: translateY(0) rotate(0) scale(0.985);
+            box-shadow: 0 5px 14px rgba(0,0,0,0.08);
+        }
+
+        .avatar-upload-btn {
+            position: absolute;
+            right: -6px;
+            bottom: -6px;
+            border: none;
+            background: #ffffff;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+            cursor: pointer;
+            transition: transform 0.18s ease;
+            font-size: 12px;
+        }
+
+        .avatar-upload-btn:hover { transform: translateY(-2px); }
 
         #backgroundInput {
             display: none;
@@ -261,12 +297,19 @@
     </style>
 </head>
 <body>
-    <button class="btn-back" onclick="goBack()">← </button>
+    <button class="btn-back" id="backBtn" onclick="goBack()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M15 18L9 12L15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+    </button>
 
     <div class="container">
         <div class="profile-section">
             <div class="avatar-container">
-                <img id="avatarImg" class="avatar" src="" alt="头像" onclick="document.getElementById('backgroundInput').click()">
+                <div style="position:relative;">
+                    <div id="avatarImg" class="avatar" role="img" aria-label="头像"></div>
+                    <button id="avatarUploadBtn" class="avatar-upload-btn" title="更换头像">✎</button>
+                </div>
             </div>
             <div class="info-section">
                 <div class="username-container">
@@ -282,11 +325,15 @@
     </div>
 
     <div class="button-group">
-        <button class="btn btn-modify" onclick="document.getElementById('backgroundInput').click()">修改背景</button>
-        <button class="btn btn-save" id="saveBtn" onclick="saveUserInfo()">保存</button>
+        <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-modify" id="changeBgBtn">修改背景</button>
+            <button class="btn btn-modify" id="changeAvatarBtn">修改头像</button>
+        </div>
+        <button class="btn btn-save" id="saveBtn" onclick="saveUserInfo()" disabled>保存</button>
     </div>
 
-    <input type="file" id="backgroundInput" accept="image/*" onchange="uploadBackground(event)">
+    <input type="file" id="backgroundInput" accept="image/*" style="display:none" onchange="uploadBackground(event)">
+    <input type="file" id="avatarInput" accept="image/*" style="display:none" onchange="uploadAvatar(event)">
 
     <div class="loading-overlay" id="loadingOverlay">
         <div class="spinner"></div>
@@ -298,29 +345,65 @@
         let currentUser = null;
         let originalSignature = '';
         let backgroundFile = null;
+        let avatarFile = null;
+        let originalUsername = '';
+
+        function checkForChanges() {
+            const saveBtn = document.getElementById('saveBtn');
+            if (!saveBtn) return;
+            const usernameEl = document.getElementById('username');
+            const signatureEl = document.getElementById('signature');
+            const username = usernameEl ? (usernameEl.value || '').trim() : '';
+            const signature = signatureEl ? (signatureEl.value || '') : '';
+
+            // 禁用条件：无任何改动 或 用户名为空
+            const changed = (username !== originalUsername) || (signature !== originalSignature) || !!avatarFile || !!backgroundFile;
+            if (!username) {
+                saveBtn.disabled = true;
+                return;
+            }
+            saveBtn.disabled = !changed;
+        }
 
         async function init() {
-            const token = localStorage.getItem('token');
-            if (!token) {
-                window.location.href = '/pages/index.html';
+            const urlParams = new URLSearchParams(window.location.search);
+            const profileUser = urlParams.get('user'); // 要查看的用户名（可选）
+
+            const token = localStorage.getItem('token') || localStorage.getItem('lanchat_auth_token');
+            const loggedInUser = localStorage.getItem('lanchat_auth_user') || localStorage.getItem('username') || null;
+
+            // 如果既没有 token 也没有指定要查看的用户，则跳转回登录页
+            if (!token && !profileUser) {
+                window.location.href = 'index.html';
                 return;
             }
 
+            // 编辑模式：当没有传入 profileUser，或 profileUser 与已登录用户相同时，允许编辑
+            const editMode = !profileUser || (loggedInUser && profileUser === loggedInUser);
+
             try {
-                const response = await fetch('/api/user/info', {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
+                let response;
+                if (profileUser && (!loggedInUser || profileUser !== loggedInUser)) {
+                    // 查看他人主页（尝试公开接口），若有 token 则带上以获取更多信息
+                    response = await fetch(`/api/user/info?username=${encodeURIComponent(profileUser)}`, {
+                        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                    });
+                } else {
+                    // 查看自己主页
+                    response = await fetch('/api/user/info', {
+                        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                    });
+                }
 
                 if (response.ok) {
                     const user = await response.json();
                     currentUser = user;
                     originalSignature = user.signature || '';
-                    
+
                     document.getElementById('username').value = user.username;
+                    originalUsername = user.username;
                     document.getElementById('signature').value = user.signature || '';
-                    
+
                     // 设置背景
                     if (user.background_url) {
                         document.body.style.backgroundImage = `url('${user.background_url}')`;
@@ -328,30 +411,100 @@
                         document.body.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
                     }
 
-                    // 设置头像
+                    // 设置头像（使用 div 作为头像容器，支持背景图与首字母）
+                    const avatarEl = document.getElementById('avatarImg');
                     if (user.avatar_url) {
-                        document.getElementById('avatarImg').src = user.avatar_url;
+                        avatarEl.style.backgroundImage = `url('${user.avatar_url}')`;
+                        avatarEl.textContent = '';
                     } else {
-                        document.getElementById('avatarImg').textContent = user.username.charAt(0).toUpperCase();
-                        document.getElementById('avatarImg').style.fontSize = '28px';
+                        avatarEl.style.backgroundImage = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                        avatarEl.textContent = user.username.charAt(0).toUpperCase();
                     }
+
+                    // 根据是否为本人决定是否允许编辑和显示控件
+                    const usernameEl = document.getElementById('username');
+                    const signatureEl = document.getElementById('signature');
+                    const changeBgBtn = document.getElementById('changeBgBtn');
+                    const changeAvatarBtn = document.getElementById('changeAvatarBtn');
+                    const avatarUploadBtn = document.getElementById('avatarUploadBtn');
+                    const saveBtn = document.getElementById('saveBtn');
+
+                    if (usernameEl) usernameEl.readOnly = !editMode;
+                    if (signatureEl) signatureEl.readOnly = !editMode;
+
+                    if (!editMode) {
+                        if (changeBgBtn) changeBgBtn.style.display = 'none';
+                        if (changeAvatarBtn) changeAvatarBtn.style.display = 'none';
+                        if (avatarUploadBtn) avatarUploadBtn.style.display = 'none';
+                        if (saveBtn) saveBtn.style.display = 'none';
+                    } else {
+                        if (changeBgBtn) changeBgBtn.style.display = '';
+                        if (changeAvatarBtn) changeAvatarBtn.style.display = '';
+                        if (avatarUploadBtn) avatarUploadBtn.style.display = '';
+                        if (saveBtn) saveBtn.style.display = '';
+                    }
+
+                    // 初始化保存按钮状态
+                    checkForChanges();
                 } else {
-                    showToast('加载用户信息失败', 'error');
-                    window.location.href = '/pages/index.html';
+                    // 不能成功获取用户信息
+                    if (profileUser) {
+                        // 如果是在查看他人主页，提供降级展示（只显示用户名首字母），并禁用编辑控件
+                        showToast('加载用户信息失败，显示公开信息（如有）', 'error');
+                        document.getElementById('username').value = profileUser;
+                        originalUsername = profileUser;
+                        document.getElementById('signature').value = '';
+                        const avatarEl = document.getElementById('avatarImg');
+                        avatarEl.style.backgroundImage = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                        avatarEl.textContent = profileUser.charAt(0).toUpperCase();
+
+                        const changeBgBtn = document.getElementById('changeBgBtn');
+                        const changeAvatarBtn = document.getElementById('changeAvatarBtn');
+                        const avatarUploadBtn = document.getElementById('avatarUploadBtn');
+                        const saveBtn = document.getElementById('saveBtn');
+                        if (changeBgBtn) changeBgBtn.style.display = 'none';
+                        if (changeAvatarBtn) changeAvatarBtn.style.display = 'none';
+                        if (avatarUploadBtn) avatarUploadBtn.style.display = 'none';
+                        if (saveBtn) saveBtn.style.display = 'none';
+                        checkForChanges();
+                    } else {
+                        showToast('加载用户信息失败', 'error');
+                        window.location.href = 'index.html';
+                    }
                 }
             } catch (error) {
                 console.error('Error:', error);
-                showToast('加载失败，请重新登录', 'error');
-                window.location.href = '/pages/index.html';
+                if (profileUser) {
+                    showToast('加载失败，显示公开信息（离线）', 'error');
+                    document.getElementById('username').value = profileUser;
+                    originalUsername = profileUser;
+                    document.getElementById('signature').value = '';
+                    const avatarEl = document.getElementById('avatarImg');
+                    avatarEl.style.backgroundImage = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                    avatarEl.textContent = profileUser.charAt(0).toUpperCase();
+                    const changeBgBtn = document.getElementById('changeBgBtn');
+                    const changeAvatarBtn = document.getElementById('changeAvatarBtn');
+                    const avatarUploadBtn = document.getElementById('avatarUploadBtn');
+                    const saveBtn = document.getElementById('saveBtn');
+                    if (changeBgBtn) changeBgBtn.style.display = 'none';
+                    if (changeAvatarBtn) changeAvatarBtn.style.display = 'none';
+                    if (avatarUploadBtn) avatarUploadBtn.style.display = 'none';
+                    if (saveBtn) saveBtn.style.display = 'none';
+                    checkForChanges();
+                } else {
+                    showToast('加载失败，请重试', 'error');
+                    window.location.href = 'index.html';
+                }
             }
         }
 
         async function saveUserInfo() {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('token') || localStorage.getItem('lanchat_auth_token');
             const signature = document.getElementById('signature').value;
+            const username = document.getElementById('username').value.trim();
 
-            // 检查是否有改动
-            if (signature === originalSignature && !backgroundFile) {
+            // 检查是否有改动（用户名/签名/头像/背景）
+            if (username === originalUsername && signature === originalSignature && !avatarFile && !backgroundFile) {
                 showToast('没有改动', 'error');
                 return;
             }
@@ -359,7 +512,30 @@
             showLoading(true);
 
             try {
-                // 保存签名
+                // 保存用户名和签名
+                if (username !== originalUsername) {
+                    if (!username) {
+                        showToast('用户名不能为空', 'error');
+                        showLoading(false);
+                        return;
+                    }
+                    const resp = await fetch('/api/user/update', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ username })
+                    });
+
+                    if (!resp.ok) {
+                        showToast('更新用户名失败', 'error');
+                        showLoading(false);
+                        return;
+                    }
+                    originalUsername = username;
+                }
+
                 if (signature !== originalSignature) {
                     const response = await fetch('/api/user/update', {
                         method: 'POST',
@@ -378,38 +554,66 @@
                     originalSignature = signature;
                 }
 
+                // 保存头像（如果有新上传的）
+                if (avatarFile) {
+                    const formA = new FormData();
+                    formA.append('avatar', avatarFile);
+                    const respA = await fetch('/api/user/avatar', {
+                        method: 'POST',
+                        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+                        body: formA
+                    });
+                    if (!respA.ok) {
+                        showToast('上传头像失败', 'error');
+                        showLoading(false);
+                        return;
+                    }
+                    avatarFile = null;
+                }
+
                 // 保存背景（如果有新上传的）
                 if (backgroundFile) {
-                    const formData = new FormData();
-                    formData.append('background', backgroundFile);
-                    
-                    const bgResponse = await fetch('/api/user/background', {
+                    const formB = new FormData();
+                    formB.append('background', backgroundFile);
+                    const respB = await fetch('/api/user/background', {
                         method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: formData
+                        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+                        body: formB
                     });
-
-                    if (!bgResponse.ok) {
+                    if (!respB.ok) {
                         showToast('上传背景失败', 'error');
                         showLoading(false);
                         return;
                     }
-                    
-                    const bgData = await bgResponse.json();
-                    document.body.style.backgroundImage = `url('${bgData.url}')`;
                     backgroundFile = null;
                 }
 
                 showToast('保存成功', 'success');
-            } catch (error) {
-                console.error('Error:', error);
+            } catch (err) {
+                console.error(err);
                 showToast('保存失败，请重试', 'error');
             } finally {
                 showLoading(false);
             }
         }
+
+        // 绑定交互控件（脚本在 body 末尾加载，元素已存在）
+        document.getElementById('changeBgBtn').addEventListener('click', () => document.getElementById('backgroundInput').click());
+        document.getElementById('changeAvatarBtn').addEventListener('click', () => document.getElementById('avatarInput').click());
+        document.getElementById('avatarUploadBtn').addEventListener('click', () => document.getElementById('avatarInput').click());
+        // 允许编辑用户名
+        const usernameEl = document.getElementById('username');
+        const signatureEl = document.getElementById('signature');
+        if (usernameEl) {
+            usernameEl.removeAttribute('readonly');
+            usernameEl.addEventListener('input', checkForChanges);
+        }
+        if (signatureEl) {
+            signatureEl.addEventListener('input', checkForChanges);
+        }
+        // 初始按钮状态
+        const saveBtn = document.getElementById('saveBtn');
+        if (saveBtn) saveBtn.disabled = true;
 
         async function uploadBackground(event) {
             const file = event.target.files[0];
@@ -432,10 +636,38 @@
             reader.onload = (e) => {
                 document.body.style.backgroundImage = `url('${e.target.result}')`;
                 backgroundFile = file;
+                checkForChanges();
             };
             reader.readAsDataURL(file);
 
             // 清空input以便下次选择相同文件
+            event.target.value = '';
+        }
+
+        async function uploadAvatar(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (!file.type.startsWith('image/')) {
+                showToast('请选择图片文件', 'error');
+                return;
+            }
+
+            if (file.size > 5 * 1024 * 1024) {
+                showToast('图片大小不能超过5MB', 'error');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const avatarEl = document.getElementById('avatarImg');
+                avatarEl.style.backgroundImage = `url('${e.target.result}')`;
+                avatarEl.textContent = '';
+                avatarFile = file;
+                checkForChanges();
+            };
+            reader.readAsDataURL(file);
+
             event.target.value = '';
         }
 
@@ -446,7 +678,8 @@
                 document.getElementById('saveBtn').disabled = true;
             } else {
                 overlay.classList.remove('show');
-                document.getElementById('saveBtn').disabled = false;
+                // 恢复根据改动计算的保存按钮状态
+                checkForChanges();
             }
         }
 
@@ -460,7 +693,7 @@
         }
 
         function goBack() {
-            window.location.href = '/pages/index.html';
+            window.location.href = 'index.html';
         }
 
         // 页面加载时初始化

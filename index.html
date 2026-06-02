@@ -140,7 +140,7 @@
         
         <div class="w-12 md:w-16 bg-slate-900 flex flex-col items-center py-4 md:py-6 justify-between text-slate-400">
             <div class="flex flex-col items-center space-y-6 w-full">
-                <div onclick="promptChangeAvatar()" class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-md cursor-pointer bg-cover bg-center" id="userAvatar" title="点击更改头像">
+                <div onclick="openProfile(currentUser)" ondblclick="promptChangeAvatar()" class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-md cursor-pointer bg-cover bg-center" id="userAvatar" title="点击查看个人主页（双击更改头像）">
                     U
                 </div>
                 <input type="file" id="avatarFileInput" accept=".jpg,.jpeg,.png,.gif" class="hidden" onchange="uploadAvatarImage(this)">
@@ -453,6 +453,13 @@
             currentUser = savedUser;
             pendingAuthPayload = { action: 'resume', token: savedToken };
             initWebSocket();
+        }
+
+        function openProfile(username) {
+            if (!username) return;
+            // 跳转到 accounts 页面并传递用户名参数
+            const url = `accounts.html?user=${encodeURIComponent(username)}`;
+            window.location.href = url;
         }
 
         function logout() {
@@ -895,6 +902,13 @@
                 } else {
                     avatarCell.innerText = msg.sender.slice(0, 2).toUpperCase();
                 }
+                // 点击头像查看用户主页
+                avatarCell.style.cursor = 'pointer';
+                avatarCell.title = msg.sender;
+                avatarCell.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openProfile(msg.sender);
+                });
                 if (isMe) body.appendChild(buildMessageBubble(msg, isMe));
                 body.appendChild(avatarCell);
                 if (!isMe) body.appendChild(buildMessageBubble(msg, isMe));

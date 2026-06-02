@@ -71,6 +71,11 @@ func main() {
 
 	http.HandleFunc("/ws", handleWebSocket)
 	http.HandleFunc("/api/upload", handleUpload)
+	// 用户相关接口：获取资料、更新、上传头像/背景
+	http.HandleFunc("/api/user/info", handleUserInfo)
+	http.HandleFunc("/api/user/update", handleUserUpdate)
+	http.HandleFunc("/api/user/avatar", handleUserAvatar)
+	http.HandleFunc("/api/user/background", handleUserBackground)
 	http.HandleFunc("/api/reset-password", handleResetPassword)
 
 	http.HandleFunc("/api/messages", handleGetMessages)
@@ -103,8 +108,10 @@ func initDB() {
 		username TEXT PRIMARY KEY,
 		password TEXT NOT NULL,
 		avatar_url TEXT DEFAULT '',
+		signature TEXT DEFAULT '',
+		background_url TEXT DEFAULT '',
 		last_ip TEXT DEFAULT ''
-	);`)
+		);`)
 	if err != nil {
 		log.Fatalf("创建users表失败: %v", err)
 	}
@@ -160,6 +167,10 @@ func initDB() {
 
 	_, _ = db.Exec("INSERT OR IGNORE INTO users (username, password) VALUES ('admin', '123')")
 	_, _ = db.Exec("INSERT OR IGNORE INTO users (username, password) VALUES ('test01', '123')")
+
+	// 如果旧的数据库缺少新列，尝试添加（忽略错误）
+	_, _ = db.Exec("ALTER TABLE users ADD COLUMN signature TEXT DEFAULT ''")
+	_, _ = db.Exec("ALTER TABLE users ADD COLUMN background_url TEXT DEFAULT ''")
 }
 
 func getIP(r *http.Request) string {
@@ -1127,4 +1138,185 @@ func handleAdminBroadcast(w http.ResponseWriter, r *http.Request) {
 	}
 	broadcastMessage(msg)
 	w.WriteHeader(http.StatusOK)
+}
+
+// --- 用户资料接口 ---
+
+func handleUserInfo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		return
+	}
+	username := r.URL.Query().Get("username")
+	token := getTokenFromHeader(r)
+	if username == "" {
+		if token == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		u, err := getUsernameByToken(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		username = u
+	}
+
+	var avatar, signature, background string
+	err := db.QueryRow("SELECT avatar_url, signature, background_url FROM users WHERE username = ?", username).Scan(&avatar, &signature, &background)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"username":       username,
+		"avatar_url":     avatar,
+		"signature":      signature,
+		"background_url": background,
+	})
+}
+
+func handleUserUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		return
+	}
+	token := getTokenFromHeader(r)
+	if token == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	user, err := getUsernameByToken(token)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	var req map[string]string
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	// 更新签名
+	if sig, ok := req["signature"]; ok {
+		_, _ = db.Exec("UPDATE users SET signature = ? WHERE username = ?", sig, user)
+	}
+
+	// 更新用户名（需要迁移相关表）
+	if newName, ok := req["username"]; ok && newName != "" && newName != user {
+		// 检查是否已存在
+		var exists string
+		err := db.QueryRow("SELECT username FROM users WHERE username = ?", newName).Scan(&exists)
+		if err != sql.ErrNoRows {
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "username_exists"})
+			return
+		}
+
+		tx, _ := db.Begin()
+		_, _ = tx.Exec("UPDATE users SET username = ? WHERE username = ?", newName, user)
+		_, _ = tx.Exec("UPDATE session_tokens SET username = ? WHERE username = ?", newName, user)
+		_, _ = tx.Exec("UPDATE friends SET username = ? WHERE username = ?", newName, user)
+		_, _ = tx.Exec("UPDATE friends SET friend_username = ? WHERE friend_username = ?", newName, user)
+		_, _ = tx.Exec("UPDATE group_members SET username = ? WHERE username = ?", newName, user)
+		_, _ = tx.Exec("UPDATE groups SET owner = ? WHERE owner = ?", newName, user)
+		_, _ = tx.Exec("UPDATE messages SET sender = ? WHERE sender = ?", newName, user)
+		_, _ = tx.Exec("UPDATE messages SET target_id = ? WHERE target_type = 'private' AND target_id = ?", newName, user)
+		_ = tx.Commit()
+
+		stateMutex.Lock()
+		if conn, ok := clients[user]; ok {
+			clients[newName] = conn
+			delete(clients, user)
+		}
+		stateMutex.Unlock()
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func handleUserAvatar(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		return
+	}
+	token := getTokenFromHeader(r)
+	if token == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	user, err := getUsernameByToken(token)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	file, header, err := r.FormFile("avatar")
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	randBytes := make([]byte, 8)
+	_, _ = rand.Read(randBytes)
+	newFileName := fmt.Sprintf("%d_%s%s", time.Now().UnixNano(), hex.EncodeToString(randBytes), ext)
+	savePath := filepath.Join("./uploads", newFileName)
+	out, err := os.Create(savePath)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer out.Close()
+	_, _ = io.Copy(out, file)
+
+	url := "/uploads/" + newFileName
+	_, _ = db.Exec("UPDATE users SET avatar_url = ? WHERE username = ?", url, user)
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"url": url})
+}
+
+func handleUserBackground(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		return
+	}
+	token := getTokenFromHeader(r)
+	if token == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	user, err := getUsernameByToken(token)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	file, header, err := r.FormFile("background")
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	randBytes := make([]byte, 8)
+	_, _ = rand.Read(randBytes)
+	newFileName := fmt.Sprintf("%d_%s%s", time.Now().UnixNano(), hex.EncodeToString(randBytes), ext)
+	savePath := filepath.Join("./uploads", newFileName)
+	out, err := os.Create(savePath)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer out.Close()
+	_, _ = io.Copy(out, file)
+
+	url := "/uploads/" + newFileName
+	_, _ = db.Exec("UPDATE users SET background_url = ? WHERE username = ?", url, user)
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"url": url})
 }
