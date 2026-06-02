@@ -382,17 +382,19 @@
 
             try {
                 let response;
-                if (profileUser && (!loggedInUser || profileUser !== loggedInUser)) {
-                    // 查看他人主页（尝试公开接口），若有 token 则带上以获取更多信息
-                    response = await fetch(`/api/user/info?username=${encodeURIComponent(profileUser)}`, {
-                        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-                    });
-                } else {
-                    // 查看自己主页
-                    response = await fetch('/api/user/info', {
-                        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-                    });
+                // 确定要查询的用户名
+                let queryUsername = profileUser || loggedInUser;
+                
+                if (!queryUsername) {
+                    showToast('无法确定用户信息', 'error');
+                    window.location.href = 'index.html';
+                    return;
                 }
+                
+                // 统一使用username参数查询，提高兼容性
+                response = await fetch(`/api/user/info?username=${encodeURIComponent(queryUsername)}`, {
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                });
 
                 if (response.ok) {
                     const user = await response.json();
