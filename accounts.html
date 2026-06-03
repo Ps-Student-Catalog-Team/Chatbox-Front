@@ -368,8 +368,9 @@
             const urlParams = new URLSearchParams(window.location.search);
             const profileUser = urlParams.get('user'); // 要查看的用户名（可选）
 
-            const token = localStorage.getItem('token') || localStorage.getItem('lanchat_auth_token');
-            const loggedInUser = localStorage.getItem('lanchat_auth_user') || localStorage.getItem('username') || null;
+            // 使用与 index.html 一致的 key
+            const token = localStorage.getItem('lanchat_auth_token');
+            const loggedInUser = localStorage.getItem('lanchat_auth_user');
 
             // 如果既没有 token 也没有指定要查看的用户，则跳转回登录页
             if (!token && !profileUser) {
@@ -500,9 +501,23 @@
         }
 
         async function saveUserInfo() {
-            const token = localStorage.getItem('token') || localStorage.getItem('lanchat_auth_token');
+            const token = localStorage.getItem('lanchat_auth_token');
             const signature = document.getElementById('signature').value;
             const username = document.getElementById('username').value.trim();
+
+            // 检查登录状态
+            if (!token) {
+                console.error('Token 缺失。localStorage 内容:', {
+                    token: localStorage.getItem('lanchat_auth_token'),
+                    user: localStorage.getItem('lanchat_auth_user'),
+                    allKeys: Object.keys(localStorage)
+                });
+                showToast('登录已过期，请重新登录', 'error');
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 1500);
+                return;
+            }
 
             // 检查是否有改动（用户名/签名/头像/背景）
             if (username === originalUsername && signature === originalSignature && !avatarFile && !backgroundFile) {
@@ -561,7 +576,7 @@
                     formA.append('avatar', avatarFile);
                     const respA = await fetch('/api/user/avatar', {
                         method: 'POST',
-                        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+                        headers: { 'Authorization': `Bearer ${token}` },
                         body: formA
                     });
                     if (!respA.ok) {
@@ -578,7 +593,7 @@
                     formB.append('background', backgroundFile);
                     const respB = await fetch('/api/user/background', {
                         method: 'POST',
-                        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+                        headers: { 'Authorization': `Bearer ${token}` },
                         body: formB
                     });
                     if (!respB.ok) {

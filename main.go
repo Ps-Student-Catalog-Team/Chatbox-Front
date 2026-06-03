@@ -1187,11 +1187,14 @@ func handleUserUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	token := getTokenFromHeader(r)
 	if token == "" {
+		log.Printf("[DEBUG] handleUserUpdate: Authorization 头缺失或格式错误")
+		log.Printf("[DEBUG] 收到的 Authorization 头: %s", r.Header.Get("Authorization"))
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 	user, err := getUsernameByToken(token)
 	if err != nil {
+		log.Printf("[DEBUG] handleUserUpdate: token 无效。错误: %v", err)
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
@@ -1243,11 +1246,13 @@ func handleUserAvatar(w http.ResponseWriter, r *http.Request) {
 	}
 	token := getTokenFromHeader(r)
 	if token == "" {
+		log.Printf("[DEBUG] handleUserAvatar: Authorization 头缺失或格式错误")
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 	user, err := getUsernameByToken(token)
 	if err != nil {
+		log.Printf("[DEBUG] handleUserAvatar: token 无效。错误: %v", err)
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
@@ -1285,11 +1290,13 @@ func handleUserBackground(w http.ResponseWriter, r *http.Request) {
 	}
 	token := getTokenFromHeader(r)
 	if token == "" {
+		log.Printf("[DEBUG] handleUserBackground: Authorization 头缺失或格式错误")
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 	user, err := getUsernameByToken(token)
 	if err != nil {
+		log.Printf("[DEBUG] handleUserBackground: token 无效。错误: %v", err)
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}

@@ -555,10 +555,13 @@
                     switch(data.type) {
                         case "auth_ok":
                             currentUser = document.getElementById('usernameInput').value.trim() || localStorage.getItem(authUserKey) || currentUser;
+                            // 确保 token 存在再保存
                             if (data.token) {
                                 saveAuthData(data.token, currentUser);
                             } else {
-                                saveAuthData(localStorage.getItem(authTokenKey), currentUser);
+                                console.error('登录成功但未收到 token，尝试使用现有 token');
+                                // 如果后端没有返回 token，仍然设置用户信息
+                                localStorage.setItem(authUserKey, currentUser);
                             }
                             if (data.avatar_url) {
                                 currentAvatar.type = 'image';
