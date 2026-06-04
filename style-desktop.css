@@ -47,6 +47,50 @@
     box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
 
+.sidebar-item:active {
+    transform: scale(0.95);
+    box-shadow: 0 5px 12px rgba(15, 23, 42, 0.1);
+}
+
+#userAvatar {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+#userAvatar:hover {
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 0 12px 20px rgba(78, 93, 148, 0.25);
+}
+
+.w-12.md\:w-16.bg-slate-900 button:active {
+    transform: scale(0.95);
+    opacity: 0.8;
+}
+
+#listTitle {
+    animation: fadeInUp 0.5s ease forwards;
+    animation-delay: 0.1s;
+    opacity: 0;
+}
+
+#listActions button {
+    animation: fadeInUp 0.3s ease forwards;
+    opacity: 0;
+}
+
+#listActions button:nth-child(1) {
+    animation-delay: 0.1s;
+}
+
+#listActions button:nth-child(2) {
+    animation-delay: 0.15s;
+}
+
+#listContent p {
+    animation: fadeInUp 0.5s ease forwards;
+    animation-delay: 0.4s;
+    opacity: 0;
+}
+
 @keyframes fadeInUp {
     to {
         opacity: 1;
@@ -59,4 +103,113 @@
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+@keyframes modalEnter {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes modalExit {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+}
+
+#addFriendModal {
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+#addFriendModal:not(.hidden) {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+#addFriendModal:not(.hidden) > div {
+    animation: modalEnter 0.3s ease forwards;
+}
+
+#addFriendModal.hidden > div {
+    animation: modalExit 0.3s ease forwards;
+}
+
+/* 为创建群组模态框添加动画 */
+#groupModal {
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+#groupModal:not(.hidden) {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+#groupModal:not(.hidden) > div {
+    animation: modalEnter 0.3s ease forwards;
+}
+
+#groupModal.hidden > div {
+    animation: modalExit 0.3s ease forwards;
+}
+
+/* 为群聊管理模态框添加动画 */
+#groupManagementModal {
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+#groupManagementModal:not(.hidden) {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+#groupManagementModal:not(.hidden) > div {
+    animation: modalEnter 0.3s ease forwards;
+}
+
+#groupManagementModal.hidden > div {
+    animation: modalExit 0.3s ease forwards;
+}
+
+/* 为邀请成员加入群聊模态框添加动画 */
+#addMemberModal {
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+#addMemberModal:not(.hidden) {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+#addMemberModal:not(.hidden) > div {
+    animation: modalEnter 0.3s ease forwards;
+}
+
+#addMemberModal.hidden > div {
+    animation: modalExit 0.3s ease forwards;
 }
