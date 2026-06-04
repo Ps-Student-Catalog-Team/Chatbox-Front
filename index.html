@@ -241,8 +241,13 @@
                         </button>
                         <input type="file" id="imageFileInput" accept=".jpg,.jpeg,.png,.gif" class="hidden" onchange="uploadFileToServer(this)">
 
-                        <input type="text" id="messageInput" placeholder="请输入消息..." onkeydown="handleMessageInputKeydown(event)"
-                               class="flex-1 px-2 md:px-4 py-1.5 md:py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs md:text-sm bg-slate-50/50">
+                        <div class="flex-1 relative" style="font-family: inherit;">
+                            <input type="text" id="messageInput" placeholder="请输入消息..." onkeydown="handleMessageInputKeydown(event)" oninput="updateMentionHighlight()" onscroll="syncHighlightScroll()"
+                                   class="w-full px-2 md:px-4 py-1.5 md:py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs md:text-sm bg-slate-50/50 relative z-10" style="position: relative; z-index: 10;">
+                            <!-- @提及高亮层 -->
+                            <div id="mentionHighlight" class="absolute top-0 left-0 px-2 md:px-4 py-1.5 md:py-2 text-xs md:text-sm pointer-events-none rounded-xl" style="width: 100%; max-height: 100px; overflow: hidden; font-family: inherit; white-space: pre-wrap; word-wrap: break-word; background: transparent; z-index: 1; line-height: inherit;">
+                            </div>
+                        </div>
                         
                         <button onclick="sendMessage()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 md:px-5 py-1.5 md:py-2 rounded-xl text-xs md:text-sm font-medium transition cursor-pointer shadow-sm">
                             发送
@@ -954,7 +959,29 @@
                 img.onclick = () => window.open(img.src);
                 bubble.appendChild(img);
             } else {
-                bubble.innerText = msg.content || '[空消息]';
+                // 处理@提及高亮
+                const parts = parseAndHighlightMentions(msg.content || '[空消息]');
+                parts.forEach(part => {
+                    if (part.type === 'mention-valid') {
+                        const span = document.createElement('span');
+                        if (isMe) {
+                            // 自己的消息（蓝色背景）：使用白色或浅色
+                            span.style.color = '#fff';
+                            span.style.fontWeight = 'bold';
+                            span.style.textDecoration = 'underline';
+                        } else {
+                            // 别人的消息（白色背景）：使用红色
+                            span.style.color = '#ef4444';
+                            span.style.fontWeight = 'bold';
+                        }
+                        span.innerText = part.content;
+                        bubble.appendChild(span);
+                    } else {
+                        const span = document.createElement('span');
+                        span.innerText = part.content;
+                        bubble.appendChild(span);
+                    }
+                });
             }
 
             if (isMe && !msg.pending) {
@@ -1108,6 +1135,143 @@
             if (activeTarget && `${activeTarget.type}:${activeTarget.id}` === sessionKey) {
                 renderChatBubbles();
             }
+        }
+
+        /**
+         * 获取所有可提及的用户名列表
+         */
+        function getAllUserNames() {
+            const allNames = new Set();
+            allNames.add(currentUser); // 当前用户
+            
+            // 添加所有好友
+            if (globalFriends && Array.isArray(globalFriends)) {
+                globalFriends.forEach(friend => allNames.add(friend));
+            }
+            
+            // 添加当前群聊的所有成员
+            if (activeTarget && activeTarget.type === 'group') {
+                const group = globalGroups.find(g => g.id.toString() === activeTarget.id);
+                if (group) {
+                    if (group.members && Array.isArray(group.members)) {
+                        group.members.forEach(member => {
+                            const memberName = typeof member === 'string' ? member : member.username;
+                            if (memberName) allNames.add(memberName);
+                        });
+                    }
+                    // 备用方案：如果没有members，至少加入群主
+                    if (group.owner) allNames.add(group.owner);
+                }
+            } else if (activeTarget && activeTarget.type === 'private') {
+                // 私聊中，可以提及对方
+                allNames.add(activeTarget.id);
+            }
+            
+            return Array.from(allNames);
+        }
+
+        /**
+         * 解析文本中的@提及，返回带有HTML标记的富文本
+         */
+        function parseAndHighlightMentions(text) {
+            const allUsers = getAllUserNames();
+            let result = [];
+            let lastIndex = 0;
+            
+            // 匹配@符号后跟着用户名的模式
+            // @(字母数字_汉字)
+            const mentionRegex = /@([a-zA-Z0-9_\u4e00-\u9fa5]+)/g;
+            let match;
+            
+            while ((match = mentionRegex.exec(text)) !== null) {
+                const mention = match[1]; // 获取@后面的部分
+                const isValidUser = allUsers.some(user => user === mention);
+                
+                // 添加@之前的文本（如果不为空）
+                const beforeText = text.substring(lastIndex, match.index);
+                if (beforeText) {
+                    result.push({
+                        type: 'text',
+                        content: beforeText
+                    });
+                }
+                
+                // 添加@提及部分
+                result.push({
+                    type: isValidUser ? 'mention-valid' : 'mention-invalid',
+                    content: '@' + mention
+                });
+                
+                lastIndex = match.index + match[0].length;
+            }
+            
+            // 添加剩余的文本（如果不为空）
+            const remainingText = text.substring(lastIndex);
+            if (remainingText) {
+                result.push({
+                    type: 'text',
+                    content: remainingText
+                });
+            }
+            
+            // 如果没有任何匹配，返回整个文本
+            if (result.length === 0) {
+                result.push({
+                    type: 'text',
+                    content: text
+                });
+            }
+            
+            return result;
+        }
+
+        /**
+         * 同步高亮层的滚动位置
+         */
+        function syncHighlightScroll() {
+            const input = document.getElementById('messageInput');
+            const highlight = document.getElementById('mentionHighlight');
+            
+            if (input && highlight) {
+                highlight.scrollLeft = input.scrollLeft;
+                highlight.scrollTop = input.scrollTop;
+            }
+        }
+
+        function updateMentionHighlight() {
+            const input = document.getElementById('messageInput');
+            const highlight = document.getElementById('mentionHighlight');
+            
+            if (!input || !highlight) return;
+            
+            const text = input.value;
+            const parts = parseAndHighlightMentions(text);
+            
+            // 清空高亮层
+            highlight.innerHTML = '';
+            
+            // 构建高亮HTML
+            parts.forEach(part => {
+                const span = document.createElement('span');
+                
+                if (part.type === 'mention-valid') {
+                    // 对于有效的@提及，显示红色背景和加粗
+                    span.style.color = 'transparent';
+                    span.style.backgroundColor = 'rgba(239, 68, 68, 0.3)'; // 半透明红色背景
+                    span.style.textShadow = 'none';
+                    span.innerText = part.content;
+                } else {
+                    // 普通文本：透明，用来与输入框文本对齐
+                    span.style.color = 'transparent';
+                    span.innerText = part.content;
+                }
+                
+                highlight.appendChild(span);
+            });
+            
+            // 同步滚动位置
+            highlight.scrollLeft = input.scrollLeft;
+            highlight.scrollTop = input.scrollTop;
         }
 
         function handleMessageInputKeydown(event) {
