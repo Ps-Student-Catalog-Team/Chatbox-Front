@@ -1,4 +1,4 @@
-/* Desktop CSS - 账户管理页高级毛玻璃版样式 */
+/* Desktop CSS - 极致轻奢·垂直毛玻璃个人名片 */
 
 * {
     margin: 0;
@@ -7,39 +7,41 @@
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
     height: 100vh;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 24px; /* 让容器和按钮组优雅堆叠 */
     overflow: hidden;
 }
 
-/* 引入高级毛玻璃拟态卡片 */
+/* 彻底告别"无限拉伸的长条"，收束为 400px 黄金比例的精致卡片 */
 .container {
     background: rgba(255, 255, 255, 0.65);
-    backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: 24px;
-    padding: 40px;
-    width: 90%;
-    max-width: 480px;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15), 
-                inset 0 1px 1px rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(24px) saturate(190%);
+    -webkit-backdrop-filter: blur(24px) saturate(190%);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 28px;
+    padding: 45px 36px 36px 36px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 30px 70px rgba(0, 0, 0, 0.15), 
+                inset 0 1px 1px rgba(255, 255, 255, 0.4);
+    display: flex;
+    flex-direction: column;
+    gap: 36px;
     position: relative;
-    transition: all 0.3s ease;
 }
 
+/* 改为垂直中轴对称布局 */
 .profile-section {
     display: flex;
-    gap: 28px;
+    flex-direction: column;
     align-items: center;
+    gap: 24px;
 }
 
 .avatar-container {
@@ -47,75 +49,58 @@ body {
     position: relative;
 }
 
-/* 头像高级阴影与微光边框 */
 .avatar {
-    width: 84px;
-    height: 84px;
+    width: 96px;
+    height: 96px;
     border-radius: 50%;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     display: flex;
     align-items: center;
     justify-content: center;
     color: white;
-    font-size: 32px;
+    font-size: 36px;
     font-weight: 700;
     background-size: cover;
     background-position: center;
-    cursor: pointer;
-    border: 4px solid rgba(255, 255, 255, 0.8);
-    box-shadow: 0 8px 24px rgba(118, 75, 162, 0.25);
-    transition: transform 0.5s cubic-bezier(0.165, 0.84, 0.44, 1), 
-                box-shadow 0.5s cubic-bezier(0.165, 0.84, 0.44, 1),
-                border-color 0.3s ease;
+    border: 4px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 10px 24px rgba(118, 75, 162, 0.18);
+    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .avatar:hover {
     transform: scale(1.04);
-    box-shadow: 0 12px 32px rgba(118, 75, 162, 0.35);
-    border-color: rgba(255, 255, 255, 1);
 }
 
-.avatar:active {
-    transform: scale(0.98);
-    box-shadow: 0 6px 18px rgba(118, 75, 162, 0.2);
-    transition: transform 0.1s ease;
-}
-
+/* 文字与输入框全面居中对齐 */
 .info-section {
+    width: 100%;
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    flex: 1;
-    gap: 12px;
+    gap: 16px;
+    text-align: center;
 }
 
-.username-container, .signature-container {
-    position: relative;
-}
-
-/* 让原本隐藏的 Label 作为高级修饰语隐约可见 */
 .username-label, .signature-label {
     display: block;
     font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 1.5px;
     color: rgba(0, 0, 0, 0.4);
-    margin-bottom: 2px;
+    margin-bottom: 4px;
 }
 
-/* 输入框改为极简极客线条流 */
 .username, .signature {
-    font-size: 22px;
+    font-size: 24px;
     font-weight: 600;
     color: #1d1d1f;
     outline: none;
     border: none;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     background: transparent;
     width: 100%;
-    cursor: pointer;
-    padding: 4px 0;
-    transition: all 0.3s ease;
+    padding: 6px 0;
+    text-align: center;
+    transition: border-color 0.3s ease;
 }
 
 .signature {
@@ -128,77 +113,59 @@ body {
 }
 
 .username:focus, .signature:focus {
-    border-bottom: 1.5px solid #667eea;
-    padding-left: 4px;
-    white-space: normal;
-    overflow: visible;
+    border-bottom-color: #667eea;
 }
 
-/* 彻底重构按钮布局结构，告别脆弱的 absolute 定位 */
+/* 按钮组内嵌样式 */
 .button-group {
-    width: 90%;
-    max-width: 480px;
+    width: 100%;
     display: flex;
-    gap: 16px;
-    justify-content: space-between;
-    align-items: center;
+    flex-direction: column;
+    gap: 12px;
 }
 
 .btn {
-    padding: 12px 22px;
+    padding: 12px 16px;
     border: none;
-    border-radius: 12px;
+    border-radius: 14px;
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
-    transition: Impl 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
+    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), 
+                box-shadow 0.3s ease, background-color 0.2s ease;
 }
 
-/* 按钮微光与渐变层 */
 .btn-modify {
-    background: rgba(255, 255, 255, 0.45);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(0, 0, 0, 0.03);
     color: #3a3a3c;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
-    position: relative;
-    overflow: hidden;
-    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), 
-                box-shadow 0.4s cubic-bezier(0.165, 0.84, 0.44, 1), 
-                background-color 0.3s ease, 
-                border-color 0.3s ease,
-                color 0.3s ease;
+    flex: 1;
 }
 
 .btn-modify:hover {
-    background: rgba(255, 255, 255, 0.9);
-    border-color: rgba(255, 255, 255, 1);
-    transform: translateY(-4px) scale(1.02);
-    box-shadow: 0 12px 24px rgba(102, 126, 234, 0.18);
-    color: #1d1d1f;
+    background: #ffffff;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
 }
 
 .btn-modify:active {
-    transform: translateY(-1px) scale(0.96);
-    box-shadow: 0 4px 10px rgba(102, 126, 234, 0.1);
-    background: rgba(255, 255, 255, 0.6);
-    transition: transform 0.08s cubic-bezier(0.25, 1, 0.5, 1);
+    transform: scale(0.96);
 }
 
 .btn-save {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+    width: 100%;
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.2);
 }
 
 .btn-save:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.5);
+    box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
 }
 
 .btn-save:disabled {
@@ -208,7 +175,7 @@ body {
     cursor: not-allowed;
 }
 
-/* 返回按钮悬浮流光效果 */
+/* 返回按钮 */
 .btn-back {
     background: rgba(255, 255, 255, 0.6);
     backdrop-filter: blur(10px);
@@ -224,23 +191,21 @@ body {
     justify-content: center;
     border-radius: 14px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    transition: all 0.3s ease;
 }
 
 .btn-back:hover {
-    transform: translateX(-3px) scale(1.05);
+    transform: translateX(-3px);
     background: #ffffff;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
 }
 
+/* 头像小铅笔 */
 .avatar-upload-btn {
     position: absolute;
     right: -2px;
     bottom: -2px;
     border: 1px solid rgba(255, 255, 255, 0.8);
     background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
     border-radius: 50%;
     width: 32px;
     height: 32px;
@@ -249,25 +214,14 @@ body {
     justify-content: center;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
     cursor: pointer;
-    font-size: 13px;
-    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), 
-                box-shadow 0.3s ease, 
-                background-color 0.2s ease;
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .avatar-upload-btn:hover {
-    transform: scale(1.18) rotate(15deg);
-    background: #ffffff;
-    box-shadow: 0 6px 16px rgba(118, 75, 162, 0.3);
+    transform: scale(1.15) rotate(15deg);
 }
 
-.avatar-upload-btn:active {
-    transform: scale(0.9) rotate(-10deg);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-    transition: transform 0.08s ease;
-}
-
-/* 全局 Loading & Toast 动效升级 */
+/* 全局弹窗与等待动效保持高级感 */
 .loading-overlay {
     display: none;
     position: fixed;
@@ -276,50 +230,10 @@ body {
     backdrop-filter: blur(8px);
     z-index: 1000;
 }
-
-.loading-overlay.show {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.spinner {
-    width: 44px;
-    height: 44px;
-    border: 3.5px solid rgba(255, 255, 255, 0.2);
-    border-top: 3.5px solid #667eea;
-    border-radius: 50%;
-    animation: spin 0.8s cubic-bezier(0.6, 0.2, 0.2, 0.8) infinite;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-.toast {
-    position: fixed;
-    bottom: 30px;
-    left: 50%;
-    transform: translate(-50%, 30px);
-    background: rgba(26, 26, 26, 0.9);
-    backdrop-filter: blur(8px);
-    color: white;
-    padding: 14px 28px;
-    border-radius: 14px;
-    opacity: 0;
-    font-size: 14px;
-    font-weight: 500;
-    letter-spacing: 0.5px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    z-index: 999;
-    pointer-events: none;
-}
-
-.toast.show {
-    opacity: 1;
-    transform: translate(-50%, 0);
-}
-
-.toast.success { background: rgba(52, 199, 89, 0.95); }
-.toast.error { background: rgba(255, 59, 48, 0.95); }
+.loading-overlay.show { display: flex; align-items: center; justify-content: center; }
+.spinner { width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.2); border-top: 4px solid #667eea; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.toast { position: fixed; bottom: 30px; left: 50%; transform: translate(-50%, 30px); background: rgba(26, 26, 26, 0.9); color: white; padding: 12px 24px; border-radius: 12px; opacity: 0; transition: all 0.3s ease; z-index: 999; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.success { background: #34c759; }
+.toast.error { background: #ff3b30; }

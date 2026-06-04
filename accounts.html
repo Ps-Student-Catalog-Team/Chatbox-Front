@@ -35,14 +35,14 @@
                 </div>
             </div>
         </div>
-    </div>
 
-    <div class="button-group">
-        <div style="display:flex;gap:8px;align-items:center">
-            <button class="btn btn-modify" id="changeBgBtn">修改背景</button>
-            <button class="btn btn-modify" id="changeAvatarBtn">修改头像</button>
+        <div class="button-group">
+            <div style="display:flex; gap:12px; width:100%;">
+                <button class="btn btn-modify" id="changeBgBtn">修改背景</button>
+                <button class="btn btn-modify" id="changeAvatarBtn">修改头像</button>
+            </div>
+            <button class="btn btn-save" id="saveBtn" onclick="saveUserInfo()" disabled>保存</button>
         </div>
-        <button class="btn btn-save" id="saveBtn" onclick="saveUserInfo()" disabled>保存</button>
     </div>
 
     <input type="file" id="backgroundInput" accept="image/*" style="display:none" onchange="uploadBackground(event)">
