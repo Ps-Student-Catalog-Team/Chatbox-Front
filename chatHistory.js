@@ -105,6 +105,8 @@ function routeIncomingMessage(msg) {
         return !(m.id < 0 && m.sender === msg.sender && m.content === msg.content && m.target_type === msg.target_type && m.target_id === msg.target_id);
     });
     if (!cacheMessages[sessionKey].some(m => m.id === msg.id)) {
+        // 标记为新消息（在路由阶段）
+        msg.isNew = true;
         cacheMessages[sessionKey].push(msg);
         if (cacheMessages[sessionKey].length > 200) cacheMessages[sessionKey].shift();
     }
@@ -112,4 +114,9 @@ function routeIncomingMessage(msg) {
         renderChatBubbles();
     }
     if (currentTab === "chats") renderSidebarList();
+    
+    // 触发新消息通知
+    if (typeof NotificationManager !== 'undefined' && msg.sender !== currentUser) {
+        NotificationManager.handleNewMessage(msg);
+    }
 }

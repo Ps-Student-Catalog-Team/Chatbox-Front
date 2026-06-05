@@ -9,6 +9,7 @@
     <title>局域网通讯 | 公共聊天室</title>
     <script src="./viewport-adapter.js"></script>
     <script src="./tailwind.browser.js"></script>
+    <script src="./notification.js"></script>
     <script src="./chatHistory.js"></script>
     <!-- 根据设备自动加载对应 CSS -->
     <link rel="stylesheet" href="./style-desktop.css" media="(min-width: 768px)">
@@ -188,6 +189,9 @@
                         <p id="activeChatMeta" class="text-[10px] md:text-xs text-slate-400 mt-0.5">通道就绪</p>
                     </div>
                     <div class="flex items-center space-x-1 md:space-x-2 relative">
+                        <button id="scrollToLatestBtn" onclick="scrollToLatestMessage()" class="text-xs md:text-sm text-slate-400 hover:text-blue-600 px-2 md:px-3 py-1 rounded-lg hover:bg-blue-50 transition cursor-pointer hidden" title="回到最新消息">
+                            ↓ 最新
+                        </button>
                         <button onclick="refreshAllMessages()" class="text-xs md:text-sm text-slate-400 hover:text-slate-600 px-2 md:px-3 py-1 rounded-lg hover:bg-slate-100 transition cursor-pointer" title="刷新聊天记录">
                             🔄 刷新
                         </button>
@@ -228,6 +232,11 @@
                                     <span>🔄</span> 刷新消息
                                 </button>
                             </div>
+                            <!-- 通用菜单项 -->
+                            <hr class="my-1">
+                            <button onclick="openNotificationSettings()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
+                                <span>🔔</span> 提醒设置
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -403,6 +412,88 @@
                 </button>
                 <button onclick="submitAddMembers()" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs cursor-pointer font-medium">
                     邀请
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 通知设置模态框 -->
+    <div id="notificationSettingsModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0">
+        <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-96 space-y-4 max-h-[85vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="text-sm font-bold text-slate-800">消息提醒设置</h3>
+                <button onclick="toggleNotificationSettingsModal(false)" class="text-xl text-slate-400 hover:text-slate-600 cursor-pointer">✕</button>
+            </div>
+
+            <div class="bg-blue-50 border border-blue-200 p-3 rounded-lg">
+                <p class="text-xs text-blue-700">
+                    💡 提示：启用浏览器通知需要您授予权限。第一次启用时会弹出权限申请。
+                </p>
+            </div>
+
+            <div class="space-y-3 border-t border-slate-100 pt-4">
+                <!-- 桌面通知 -->
+                <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                    <div class="flex-1">
+                        <p class="text-sm font-medium text-slate-700">🔔 桌面通知</p>
+                        <p class="text-xs text-slate-500 mt-0.5">在系统通知中显示新消息</p>
+                    </div>
+                    <label class="relative inline-block w-12 h-6">
+                        <input type="checkbox" id="toggleDesktopNotification" onchange="updateNotificationSetting('enableDesktopNotification', this.checked)" class="sr-only">
+                        <div class="w-12 h-6 bg-slate-300 rounded-full transition-colors cursor-pointer" id="desktopNotificationToggle"></div>
+                        <div class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform" id="desktopNotificationToggleCircle"></div>
+                    </label>
+                </div>
+
+                <!-- 提示音 -->
+                <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                    <div class="flex-1">
+                        <p class="text-sm font-medium text-slate-700">🔊 提示音</p>
+                        <p class="text-xs text-slate-500 mt-0.5">新消息时播放提示音</p>
+                    </div>
+                    <label class="relative inline-block w-12 h-6">
+                        <input type="checkbox" id="toggleSound" onchange="updateNotificationSetting('enableSound', this.checked)" class="sr-only">
+                        <div class="w-12 h-6 bg-slate-300 rounded-full transition-colors cursor-pointer" id="soundToggle"></div>
+                        <div class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform" id="soundToggleCircle"></div>
+                    </label>
+                </div>
+
+                <!-- 徽章计数 -->
+                <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                    <div class="flex-1">
+                        <p class="text-sm font-medium text-slate-700">🏷️ 未读徽章</p>
+                        <p class="text-xs text-slate-500 mt-0.5">侧边栏显示未读消息数</p>
+                    </div>
+                    <label class="relative inline-block w-12 h-6">
+                        <input type="checkbox" id="toggleBadge" onchange="updateNotificationSetting('enableBadge', this.checked)" class="sr-only">
+                        <div class="w-12 h-6 bg-slate-300 rounded-full transition-colors cursor-pointer" id="badgeToggle"></div>
+                        <div class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform" id="badgeToggleCircle"></div>
+                    </label>
+                </div>
+
+                <!-- 标题闪烁 -->
+                <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                    <div class="flex-1">
+                        <p class="text-sm font-medium text-slate-700">📌 标题提醒</p>
+                        <p class="text-xs text-slate-500 mt-0.5">浏览器标签页闪烁提醒</p>
+                    </div>
+                    <label class="relative inline-block w-12 h-6">
+                        <input type="checkbox" id="toggleTitleBlink" onchange="updateNotificationSetting('enableTitleBlink', this.checked)" class="sr-only">
+                        <div class="w-12 h-6 bg-slate-300 rounded-full transition-colors cursor-pointer" id="titleBlinkToggle"></div>
+                        <div class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform" id="titleBlinkToggleCircle"></div>
+                    </label>
+                </div>
+            </div>
+
+            <div class="bg-amber-50 border border-amber-200 p-3 rounded-lg">
+                <p class="text-xs text-amber-700">
+                    ℹ️ 通知权限设置已保存到本地。刷新页面后设置仍会保留。
+                </p>
+            </div>
+
+            <div class="flex justify-end pt-2 border-t border-slate-100">
+                <button onclick="toggleNotificationSettingsModal(false)" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer font-medium transition">
+                    关闭
                 </button>
             </div>
         </div>
@@ -752,7 +843,9 @@
                 actions.innerHTML = "";
                 const pubDiv = document.createElement('div');
                 const isPublicActive = (activeTarget && activeTarget.type === 'public' && activeTarget.id === 'global');
-                pubDiv.className = `p-2 md:p-3 rounded-xl cursor-pointer transition text-xs md:text-sm flex items-center space-x-2 md:space-x-3 mb-1 ${isPublicActive ? 'bg-blue-50 text-blue-700 font-semibold border-l-3 border-blue-500' : 'hover:bg-slate-100 text-slate-700'}`;
+                pubDiv.className = `p-2 md:p-3 rounded-xl cursor-pointer transition text-xs md:text-sm flex items-center space-x-2 md:space-x-3 mb-1 sidebar-item ${isPublicActive ? 'bg-blue-50 text-blue-700 font-semibold border-l-3 border-blue-500' : 'hover:bg-slate-100 text-slate-700'}`;
+                pubDiv.setAttribute('data-chat-type', 'public');
+                pubDiv.setAttribute('data-chat-id', 'global');
                 pubDiv.innerHTML = `<span class="text-base">公共聊天室</span>`;
                 pubDiv.onclick = () => { selectActiveChat('public', 'global', '公共聊天室'); loadHistoryMessages('public', 'global'); };
                 content.appendChild(pubDiv);
@@ -762,6 +855,8 @@
                     const div = document.createElement('div');
                     let isActive = (activeTarget && activeTarget.type === type && activeTarget.id === id);
                     div.className = `p-2 md:p-3 rounded-xl cursor-pointer transition text-xs md:text-sm flex items-center space-x-2 md:space-x-3 sidebar-item ${isActive ? 'bg-blue-50 text-blue-700 font-medium' : 'hover:bg-slate-100 text-slate-700'}`;
+                    div.setAttribute('data-chat-type', type);
+                    div.setAttribute('data-chat-id', id);
                     let displayName = "";
                     let icon = "私聊";
                     if (type === "group") {
@@ -786,6 +881,8 @@
                         const div = document.createElement('div');
                         const isActive = activeTarget && activeTarget.type === 'group' && activeTarget.id === g.id.toString();
                         div.className = `p-3 rounded-xl cursor-pointer transition text-sm flex items-center space-x-3 sidebar-item ${isActive ? 'bg-blue-50 text-blue-700 font-medium' : 'hover:bg-slate-100 text-slate-700'}`;
+                        div.setAttribute('data-chat-type', 'group');
+                        div.setAttribute('data-chat-id', g.id.toString());
                         div.innerHTML = `<span class="flex-1 truncate">${g.name}</span>`;
                         div.onclick = () => selectActiveChat('group', g.id.toString(), g.name);
                         content.appendChild(div);
@@ -853,8 +950,26 @@
             document.getElementById('activeChatMeta').innerText = metaText;
             const sessionKey = `${type}:${id}`;
             if (!cacheMessages[sessionKey]) cacheMessages[sessionKey] = [];
+            
+            // 清除新消息标记
+            clearNewMessageMarks();
+            
             renderChatBubbles();
             renderSidebarList();
+            
+            // 重置该聊天的未读计数
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.onChatWindowOpened(type, id);
+            }
+
+            // 绑定滚动事件监听（只绑定一次）
+            const chatBox = document.getElementById('chatBox');
+            if (chatBox && !chatBox._scrollListenerBound) {
+                chatBox.addEventListener('scroll', () => {
+                    updateScrollToLatestButton();
+                });
+                chatBox._scrollListenerBound = true;
+            }
             
             // 显示/隐藏在线人数（仅公共聊天室显示）
             const onlineCountBadge = document.getElementById('onlineCountBadge');
@@ -886,6 +1001,7 @@
             box.innerHTML = "";
             const sessionKey = `${activeTarget.type}:${activeTarget.id}`;
             const messages = cacheMessages[sessionKey] || [];
+            
             if (messages.length === 0) {
                 const emptyTip = document.createElement('div');
                 emptyTip.className = "flex justify-center items-center h-full text-slate-300 text-xs md:text-sm";
@@ -893,7 +1009,25 @@
                 box.appendChild(emptyTip);
                 return;
             }
-            messages.forEach(msg => {
+
+            // 找到第一条新消息的索引
+            let firstNewMessageIndex = -1;
+            for (let i = 0; i < messages.length; i++) {
+                if (messages[i].isNew) {
+                    firstNewMessageIndex = i;
+                    break;
+                }
+            }
+
+            messages.forEach((msg, index) => {
+                // 在第一条新消息前添加分隔线
+                if (index === firstNewMessageIndex && firstNewMessageIndex >= 0) {
+                    const divider = document.createElement('div');
+                    divider.className = 'new-message-divider';
+                    divider.innerHTML = '<span>新消息</span>';
+                    box.appendChild(divider);
+                }
+
                 const isMe = msg.sender === currentUser;
                 const wrapper = document.createElement('div');
                 wrapper.className = `flex ${isMe ? 'justify-end' : 'justify-start'} mb-2 md:mb-3`;
@@ -923,7 +1057,57 @@
                 wrapper.appendChild(body);
                 box.appendChild(wrapper);
             });
-            box.scrollTop = box.scrollHeight;
+
+            // 检查是否需要显示"回到最新"按钮
+            updateScrollToLatestButton();
+            
+            // 如果没有新消息，滚动到底部
+            if (firstNewMessageIndex === -1) {
+                box.scrollTop = box.scrollHeight;
+            } else {
+                // 有新消息时，滚动到新消息分隔线附近
+                setTimeout(() => {
+                    const divider = box.querySelector('.new-message-divider');
+                    if (divider) {
+                        divider.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }, 100);
+            }
+        }
+
+        // 清除消息的新标记
+        function clearNewMessageMarks() {
+            const sessionKey = `${activeTarget.type}:${activeTarget.id}`;
+            if (cacheMessages[sessionKey]) {
+                cacheMessages[sessionKey].forEach(msg => {
+                    msg.isNew = false;
+                });
+            }
+        }
+
+        // 更新"回到最新消息"按钮的显示状态
+        function updateScrollToLatestButton() {
+            const box = document.getElementById('chatBox');
+            const btn = document.getElementById('scrollToLatestBtn');
+            if (!btn) return;
+
+            // 如果滚动条距离底部超过200px，显示按钮
+            const isNearBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) > 200;
+            if (isNearBottom) {
+                btn.classList.remove('hidden');
+            } else {
+                btn.classList.add('hidden');
+            }
+        }
+
+        // 滚动到最新消息
+        function scrollToLatestMessage() {
+            const box = document.getElementById('chatBox');
+            if (box) {
+                box.scrollTop = box.scrollHeight;
+                clearNewMessageMarks();
+                renderChatBubbles();
+            }
         }
 
         function buildMessageBubble(msg, isMe) {
@@ -1940,6 +2124,82 @@
                 } else {
                     alert("连接异常，请稍后重试");
                 }
+            }
+        }
+
+        /**
+         * 打开通知设置模态框
+         */
+        function openNotificationSettings() {
+            toggleNotificationSettingsModal(true);
+            updateNotificationSettingsUI();
+        }
+
+        /**
+         * 切换通知设置模态框
+         */
+        function toggleNotificationSettingsModal(show) {
+            const modal = document.getElementById('notificationSettingsModal');
+            if (show) {
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        /**
+         * 更新通知设置UI
+         */
+        function updateNotificationSettingsUI() {
+            const config = NotificationManager.getConfig();
+
+            // 更新复选框状态
+            document.getElementById('toggleDesktopNotification').checked = config.enableDesktopNotification;
+            document.getElementById('toggleSound').checked = config.enableSound;
+            document.getElementById('toggleBadge').checked = config.enableBadge;
+            document.getElementById('toggleTitleBlink').checked = config.enableTitleBlink;
+
+            // 更新切换开关样式
+            updateToggleStyle('desktopNotification');
+            updateToggleStyle('sound');
+            updateToggleStyle('badge');
+            updateToggleStyle('titleBlink');
+        }
+
+        /**
+         * 更新切换开关的样式
+         */
+        function updateToggleStyle(name) {
+            const checkbox = document.getElementById(`toggle${name.charAt(0).toUpperCase() + name.slice(1)}`);
+            const toggle = document.getElementById(`${name}Toggle`);
+            const circle = document.getElementById(`${name}ToggleCircle`);
+
+            if (checkbox.checked) {
+                toggle.style.backgroundColor = '#3b82f6';
+                circle.style.transform = 'translateX(24px)';
+            } else {
+                toggle.style.backgroundColor = '#cbd5e1';
+                circle.style.transform = 'translateX(0)';
+            }
+        }
+
+        /**
+         * 更新通知设置
+         */
+        function updateNotificationSetting(key, value) {
+            NotificationManager.saveSettings({ [key]: value });
+            updateToggleStyle(key.replace('enable', '').toLowerCase());
+            
+            // 如果启用了桌面通知，请求权限
+            if (key === 'enableDesktopNotification' && value) {
+                NotificationManager.requestNotificationPermission().then(granted => {
+                    if (!granted) {
+                        alert('浏览器通知被拒绝。请在浏览器设置中允许通知权限。');
+                        document.getElementById('toggleDesktopNotification').checked = false;
+                        updateToggleStyle('desktopNotification');
+                        NotificationManager.saveSettings({ enableDesktopNotification: false });
+                    }
+                });
             }
         }
 
