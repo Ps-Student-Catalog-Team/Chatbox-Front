@@ -213,52 +213,62 @@ const NotificationManager = (() => {
 
     // 处理新消息（集中入口）
     function handleNewMessage(msg, isUnread = true) {
-        const { sender, target_type: type, target_id: id } = msg;
+        const { sender, target_type: type, target_id: targetId } = msg;
 
-        // 如果是当前用户的消息或当前窗口是该聊天，不提醒
+        // 不对自己发送的消息做提醒或新消息标记
         if (sender === currentUser) return;
 
-        const isCurrent = activeTarget && 
-                         activeTarget.type === type && 
-                         activeTarget.id === id;
+        // 对于私聊，通知/未读应针对“聊天伙伴”的 ID（与路由逻辑保持一致）
+        let idForUnread = targetId;
+        if (type === 'private') {
+            idForUnread = (msg.sender === currentUser) ? msg.target_id : msg.sender;
+        }
 
-        if (isCurrent && document.hasFocus()) {
-            // 当前窗口已打开且浏览器获得焦点，不提醒
+        const isCurrent = activeTarget &&
+                          activeTarget.type === type &&
+                          activeTarget.id === idForUnread;
+
+        // 如果当前正在查看此聊天且窗口处于可见并有焦点，不做新消息提示
+        if (isCurrent && document.visibilityState === 'visible' && document.hasFocus()) {
+            return;
+        }
+
+        // 如果服务端提供了发送者“正在查看”字段（可选：msg.sender_viewing），则遵循该字段，不显示提示
+        if (msg.sender_viewing || msg.senderViewing || msg.sender_viewing_chat) {
             return;
         }
 
         // 播放提示音
         playNotificationSound();
 
-        // 增加未读计数
+        // 增加未读计数（使用计算后的 id）
         if (isUnread) {
-            incrementUnreadCount(type, id);
+            incrementUnreadCount(type, idForUnread);
         }
 
-        // 构建通知内容
+        // 构建通知内容（保持原有展示逻辑）
         let senderDisplay = sender;
-        let targetName = id;
+        let targetName = idForUnread;
 
         if (type === 'group') {
-            const group = globalGroups?.find(g => g.id.toString() === id);
-            targetName = group?.name || `群组 ${id}`;
+            const group = globalGroups?.find(g => g.id.toString() === idForUnread);
+            targetName = group?.name || `群组 ${idForUnread}`;
         } else if (type === 'private') {
             targetName = sender;
         }
 
-        // 显示桌面通知
-        const notificationText = msg.content && msg.content.startsWith('/uploads/') 
-            ? '[图片]' 
+        const notificationText = msg.content && msg.content.startsWith('/uploads/')
+            ? '[图片]'
             : (msg.content || '[空消息]').substring(0, 50);
 
-        const notificationTitle = type === 'public' 
+        const notificationTitle = type === 'public'
             ? `${sender}: ${notificationText}`
             : `${senderDisplay} (${targetName}): ${notificationText}`;
 
         showDesktopNotification(notificationTitle, {
             body: `来自 ${targetName}`,
-            tag: `msg-${type}-${id}`,
-            targetChat: { type, id, name: targetName }
+            tag: `msg-${type}-${idForUnread}`,
+            targetChat: { type, id: idForUnread, name: targetName }
         });
     }
 

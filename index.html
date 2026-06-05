@@ -2203,6 +2203,19 @@
             }
         }
 
+        // 当页面从不可见切回可见时，展示延迟的新消息条并（可选）重置当前聊天未读
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                if (typeof flushPendingNewMessagesForActive === 'function') {
+                    try { flushPendingNewMessagesForActive(); } catch (e) { console.warn(e); }
+                }
+                // 保持与现有焦点行为一致：当聚焦时重置当前聊天的未读计数
+                if (typeof NotificationManager !== 'undefined' && activeTarget) {
+                    NotificationManager.onChatWindowOpened(activeTarget.type, activeTarget.id);
+                }
+            }
+        });
+
     </script>
 </body>
 </html>

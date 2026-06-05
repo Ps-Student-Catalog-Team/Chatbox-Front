@@ -105,8 +105,23 @@ function routeIncomingMessage(msg) {
         return !(m.id < 0 && m.sender === msg.sender && m.content === msg.content && m.target_type === msg.target_type && m.target_id === msg.target_id);
     });
     if (!cacheMessages[sessionKey].some(m => m.id === msg.id)) {
-        // 标记为新消息（在路由阶段）
-        msg.isNew = true;
+        // 标记为新消息（在路由阶段），避免为自己发送的消息标记为新消息
+        let markNew = false;
+        if (msg.sender !== currentUser) {
+            const isCurrent = activeTarget && `${activeTarget.type}:${activeTarget.id}` === sessionKey;
+            if (isCurrent) {
+                // 如果标签页可见并有焦点，不标记为新消息
+                if (document.visibilityState === 'visible' && document.hasFocus()) {
+                    markNew = false;
+                } else {
+                    // 浏览器不可见或无焦点：延迟在切回标签页时显示新消息条
+                    msg._pendingNew = true;
+                }
+            } else {
+                markNew = true;
+            }
+        }
+        msg.isNew = markNew;
         cacheMessages[sessionKey].push(msg);
         if (cacheMessages[sessionKey].length > 200) cacheMessages[sessionKey].shift();
     }
@@ -118,5 +133,23 @@ function routeIncomingMessage(msg) {
     // 触发新消息通知
     if (typeof NotificationManager !== 'undefined' && msg.sender !== currentUser) {
         NotificationManager.handleNewMessage(msg);
+    }
+}
+
+// 将延迟（在不可见时接收）的“新消息”在切回可见时刷新并展示
+function flushPendingNewMessagesForActive() {
+    if (!activeTarget) return;
+    const sessionKey = `${activeTarget.type}:${activeTarget.id}`;
+    const msgs = cacheMessages[sessionKey] || [];
+    let changed = false;
+    for (let m of msgs) {
+        if (m._pendingNew) {
+            m.isNew = true;
+            delete m._pendingNew;
+            changed = true;
+        }
+    }
+    if (changed) {
+        try { renderChatBubbles(); } catch (e) { console.warn('刷新延迟新消息失败', e); }
     }
 }
