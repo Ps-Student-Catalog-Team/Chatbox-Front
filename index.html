@@ -11,6 +11,7 @@
     <script src="./tailwind.browser.js"></script>
     <script src="./notification.js"></script>
     <script src="./chatHistory.js"></script>
+    <script src="./ai-chat.js"></script>
     <!-- 根据设备自动加载对应 CSS -->
     <link rel="stylesheet" href="./style-desktop.css" media="(min-width: 768px)">
     <link rel="stylesheet" href="./style-mobile.css" media="(max-width: 767px)">
@@ -230,6 +231,15 @@
                             <div id="publicMenuItems" class="hidden">
                                 <button onclick="refreshAllMessages()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
                                     <span>🔄</span> 刷新消息
+                                </button>
+                            </div>
+                            <!-- AI 菜单项 -->
+                            <div id="aiMenuItems" class="hidden">
+                                <button onclick="clearAIChatHistory()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
+                                    <span>🗑️</span> 清空对话记录
+                                </button>
+                                <button onclick="toggleChatMenu()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
+                                    <span>ℹ️</span> 关于 Gemini
                                 </button>
                             </div>
                             <!-- 通用菜单项 -->
@@ -849,7 +859,23 @@
                 pubDiv.innerHTML = `<span class="text-base">公共聊天室</span>`;
                 pubDiv.onclick = () => { selectActiveChat('public', 'global', '公共聊天室'); loadHistoryMessages('public', 'global'); };
                 content.appendChild(pubDiv);
-                const sortedKeys = Object.keys(cacheMessages).filter(key => key !== "public:global");
+
+                // ============ 添加 AI 助手项 ============
+                const aiDiv = document.createElement('div');
+                const isAIActive = (activeTarget && activeTarget.type === 'ai');
+                aiDiv.className = `p-2 md:p-3 rounded-xl cursor-pointer transition text-xs md:text-sm flex items-center space-x-2 md:space-x-3 mb-1 sidebar-item ${isAIActive ? 'bg-blue-50 text-blue-700 font-semibold border-l-3 border-blue-500' : 'hover:bg-slate-100 text-slate-700'}`;
+                aiDiv.setAttribute('data-chat-type', 'ai');
+                aiDiv.setAttribute('data-chat-id', 'gemini');
+                aiDiv.innerHTML = `<span class="text-base">🤖</span><span>Gemini 助手</span>`;
+                aiDiv.onclick = () => { 
+                    selectActiveChat('ai', 'gemini', 'Gemini 助手');
+                    if (typeof switchToAIChat === 'function') {
+                        switchToAIChat();
+                    }
+                };
+                content.appendChild(aiDiv);
+
+                const sortedKeys = Object.keys(cacheMessages).filter(key => key !== "public:global" && key !== "ai:gemini");
                 for (let key of sortedKeys) {
                     const [type, id] = key.split(':');
                     const div = document.createElement('div');
@@ -942,10 +968,11 @@
             activeTarget = { type, id, name: displayName };
             document.getElementById('emptyView').classList.add('hidden');
             document.getElementById('activeChatWindow').classList.remove('hidden');
-            document.getElementById('activeChatName').innerHTML = type === 'public' ? '公共聊天室' : `${displayName}`;
+            document.getElementById('activeChatName').innerHTML = type === 'public' ? '公共聊天室' : type === 'ai' ? 'Gemini 助手' : `${displayName}`;
             let metaText = "";
             if (type === "public") metaText = "校内公共聊天室，所有在线成员可见";
             else if (type === "group") metaText = "群组讨论，仅群成员可见";
+            else if (type === "ai") metaText = "AI 对话助手，由 Gemini 驱动";
             else metaText = "私聊通道，仅发送双方可见";
             document.getElementById('activeChatMeta').innerText = metaText;
             const sessionKey = `${type}:${id}`;
@@ -1235,6 +1262,17 @@
                 alert("请先选择一个会话");
                 return;
             }
+            
+            // ============ AI 聊天模式 ============
+            if (activeTarget.type === 'ai') {
+                if (typeof sendMessageToAI === 'function') {
+                    sendMessageToAI(text);
+                    input.value = "";
+                    return;
+                }
+            }
+            
+            // ============ 普通聊天模式 ============
             const payload = {
                 action: "msg",
                 target_type: activeTarget.type,
@@ -1906,6 +1944,7 @@
                     document.getElementById('groupMenuItems').classList.add('hidden');
                     document.getElementById('privateMenuItems').classList.add('hidden');
                     document.getElementById('publicMenuItems').classList.add('hidden');
+                    document.getElementById('aiMenuItems').classList.add('hidden');
                     
                     if (activeTarget.type === 'group') {
                         document.getElementById('groupMenuItems').classList.remove('hidden');
@@ -1913,6 +1952,8 @@
                         document.getElementById('privateMenuItems').classList.remove('hidden');
                     } else if (activeTarget.type === 'public') {
                         document.getElementById('publicMenuItems').classList.remove('hidden');
+                    } else if (activeTarget.type === 'ai') {
+                        document.getElementById('aiMenuItems').classList.remove('hidden');
                     }
                 }
             } else {
