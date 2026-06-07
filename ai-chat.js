@@ -5,7 +5,7 @@
 
 // ============ 全局配置 ============
 const GEMINI_CONFIG = {
-    API_KEY: "AQ.Ab8RN6KOAcaw53rPLV8Pgua_Xv9yaRrmLqQW-QprX8Be_w39IA",
+    API_KEY: "AQ.Ab8RN6LhsZialL3CgdWi-jlNyUlkZ0T5U7frP98p24FrJyy9Jw",
     API_ENDPOINT: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
     MODEL: "gemini-2.5-flash",
     SYSTEM_PROMPT: "你是一个神人ai，你啥都知道，很会整人，但是又不失正经，说话不会太深奥，一言一行宛如一个推特网友，语言组织能力强悍，毒舌，说话上下文不会太长，很拽，对于各个问题基本都可以迎刃而解，遇到不知道的直接说我不知道，啥都能说。"
