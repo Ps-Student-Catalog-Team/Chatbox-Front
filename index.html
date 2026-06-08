@@ -107,6 +107,81 @@
             from { opacity: 0; transform: translateY(8px) scale(0.98); }
             to { opacity: 1; transform: translateY(0) scale(1); }
         }
+
+        @keyframes slideInRight {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        @keyframes slideInLeft {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        @keyframes scaleIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .slide-in-right {
+            animation: slideInRight 300ms ease-out both;
+        }
+
+        .slide-in-left {
+            animation: slideInLeft 300ms ease-out both;
+        }
+
+        .scale-in {
+            animation: scaleIn 250ms ease-out both;
+        }
+
+        .pulse-animation {
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .modal-appear {
+            animation: scaleIn 300ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        }
+
+        .button-hover-lift {
+            transition: all 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .button-hover-lift:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        }
+
+        .sidebar-item {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .sidebar-item::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transform: translateX(-100%);
+            transition: transform 600ms ease;
+        }
+
+        .sidebar-item:hover::before {
+            transform: translateX(100%);
+        }
+
+        #chatMenu button {
+            transition: all 150ms ease;
+        }
+
+        #chatMenu button:hover {
+            padding-left: 1.25rem;
+        }
     </style>
 
     <div id="loginPanel" class="bg-white p-6 md:p-8 rounded-2xl shadow-2xl w-full md:w-96 mx-4 md:mx-auto transition-all duration-300 fade-in-up">
@@ -182,7 +257,6 @@
                     <div class="flex-1">
                         <div class="flex items-center gap-2">
                             <h3 id="activeChatName" class="text-xs md:text-sm font-bold text-slate-800">会话目标</h3>
-                            <!-- 在线人数显示（仅公共聊天室显示） -->
                             <span id="onlineCountBadge" class="hidden bg-green-100 text-green-700 text-[10px] px-2 py-0.5 rounded-full font-medium">
                                 👥 <span id="onlineCount">0</span> 人在线
                             </span>
@@ -192,9 +266,6 @@
                     <div class="flex items-center space-x-1 md:space-x-2 relative">
                         <button id="scrollToLatestBtn" onclick="scrollToLatestMessage()" class="text-xs md:text-sm text-slate-400 hover:text-blue-600 px-2 md:px-3 py-1 rounded-lg hover:bg-blue-50 transition cursor-pointer hidden" title="回到最新消息">
                             ↓ 最新
-                        </button>
-                        <button onclick="refreshAllMessages()" class="text-xs md:text-sm text-slate-400 hover:text-slate-600 px-2 md:px-3 py-1 rounded-lg hover:bg-slate-100 transition cursor-pointer" title="刷新聊天记录">
-                            🔄 刷新
                         </button>
                         <!-- 三点菜单按钮 -->
                         <button id="chatMenuBtn" onclick="toggleChatMenu()" class="text-base text-slate-400 hover:text-slate-600 px-2 md:px-3 py-1 rounded-lg hover:bg-slate-100 transition cursor-pointer" title="更多选项">
@@ -238,9 +309,6 @@
                                 <button onclick="clearAIChatHistory()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
                                     <span>🗑️</span> 清空对话记录
                                 </button>
-                                <button onclick="toggleChatMenu()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
-                                    <span>ℹ️</span> 关于 Gemini
-                                </button>
                             </div>
                             <!-- 通用菜单项 -->
                             <hr class="my-1">
@@ -263,7 +331,6 @@
                         <div class="flex-1 relative" style="font-family: inherit;">
                             <input type="text" id="messageInput" placeholder="请输入消息..." onkeydown="handleMessageInputKeydown(event)" oninput="updateMentionHighlight()" onscroll="syncHighlightScroll()"
                                    class="w-full px-2 md:px-4 py-1.5 md:py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs md:text-sm bg-slate-50/50 relative z-10" style="position: relative; z-index: 10;">
-                            <!-- @提及高亮层 -->
                             <div id="mentionHighlight" class="absolute top-0 left-0 px-2 md:px-4 py-1.5 md:py-2 text-xs md:text-sm pointer-events-none rounded-xl" style="width: 100%; max-height: 100px; overflow: hidden; font-family: inherit; white-space: pre-wrap; word-wrap: break-word; background: transparent; z-index: 1; line-height: inherit;">
                             </div>
                         </div>
@@ -278,11 +345,15 @@
     </div>
 
     <div id="groupModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0">
-        <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-96 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-96 space-y-4 max-h-[90vh] overflow-y-auto modal-appear">
             <h3 class="text-sm font-bold text-slate-800 flex items-center gap-1">创建讨论群组</h3>
+            <div id="groupModalError" class="hidden bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-600 flex items-start gap-2">
+                <span>⚠️</span>
+                <span id="groupModalErrorText"></span>
+            </div>
             <div>
                 <label class="block text-xs font-medium text-slate-500 mb-1">群聊名称</label>
-                <input type="text" id="newGroupName" placeholder="例如: 相亲相爱一家人" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <input type="text" id="newGroupName" placeholder="例如: 相亲相爱一家人" class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-500 mb-1">选择受邀好友 <span class="text-red-400">(至少选择2位)</span></label>
@@ -290,15 +361,15 @@
                 </div>
             </div>
             <div class="flex justify-end space-x-2 pt-2 border-t border-slate-100">
-                <button onclick="toggleGroupModal(false)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer font-medium">取消</button>
-                <button onclick="submitCreateGroup()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs cursor-pointer font-medium">创建群组</button>
+                <button onclick="toggleGroupModal(false)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer font-medium button-hover-lift">取消</button>
+                <button onclick="submitCreateGroup()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs cursor-pointer font-medium button-hover-lift">创建群组</button>
             </div>
         </div>
     </div>
 
     <!-- 添加好友模态框 -->
     <div id="addFriendModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0">
-        <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-80 space-y-4 max-h-[80vh] overflow-y-auto">
+        <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-80 space-y-4 max-h-[80vh] overflow-y-auto modal-appear">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-sm font-bold text-slate-800">添加好友</h3>
                 <button onclick="toggleAddFriendModal(false)" class="text-xl text-slate-400 hover:text-slate-600 cursor-pointer">✕</button>
@@ -317,7 +388,7 @@
 
     <!-- 群聊管理模态框 -->
     <div id="groupManagementModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50">
-        <div class="bg-white rounded-2xl shadow-2xl p-6 w-96 space-y-4 max-h-[80vh] overflow-y-auto">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 w-96 space-y-4 max-h-[80vh] overflow-y-auto modal-appear">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-sm font-bold text-slate-800">群聊管理</h3>
                 <button onclick="toggleGroupManagementModal(false)" class="text-xl text-slate-400 hover:text-slate-600 cursor-pointer">✕</button>
@@ -395,7 +466,7 @@
 
     <!-- 邀请成员加入群聊模态框 -->
     <div id="addMemberModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50">
-        <div class="bg-white rounded-2xl shadow-2xl p-6 w-96 space-y-4 max-h-[80vh] overflow-y-auto">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 w-96 space-y-4 max-h-[80vh] overflow-y-auto modal-appear">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-sm font-bold text-slate-800">邀请成员加入群聊</h3>
                 <button onclick="toggleAddMemberModal(false)" class="text-xl text-slate-400 hover:text-slate-600 cursor-pointer">✕</button>
@@ -429,7 +500,7 @@
 
     <!-- 通知设置模态框 -->
     <div id="notificationSettingsModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0">
-        <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-96 space-y-4 max-h-[85vh] overflow-y-auto">
+        <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-96 space-y-4 max-h-[85vh] overflow-y-auto modal-appear">
             <div class="flex items-center justify-between mb-2">
                 <h3 class="text-sm font-bold text-slate-800">消息提醒设置</h3>
                 <button onclick="toggleNotificationSettingsModal(false)" class="text-xl text-slate-400 hover:text-slate-600 cursor-pointer">✕</button>
@@ -569,11 +640,13 @@
         }
 
         function logout() {
-            clearAuthData();
-            if (ws) {
-                ws.close();
+            if (confirm('确认要注销账号吗？\n\n此操作会登出当前账户。')) {
+                clearAuthData();
+                if (ws) {
+                    ws.close();
+                }
+                window.location.reload();
             }
-            window.location.reload();
         }
 
         function isValidHexColor(value) {
@@ -910,7 +983,7 @@
                         div.setAttribute('data-chat-type', 'group');
                         div.setAttribute('data-chat-id', g.id.toString());
                         div.innerHTML = `<span class="flex-1 truncate">${g.name}</span>`;
-                        div.onclick = () => selectActiveChat('group', g.id.toString(), g.name);
+                        div.onclick = () => { selectActiveChat('group', g.id.toString(), g.name); loadHistoryMessages('group', g.id.toString()); };
                         content.appendChild(div);
                     });
                 }
@@ -924,8 +997,8 @@
                 title.innerText = "通讯录管理";
                 actions.innerHTML = `
                     <div class="flex items-center space-x-2">
-                        <button onclick="toggleAddFriendModal(true)" class="text-xs bg-white px-2 py-1 rounded-lg shadow-sm border border-slate-200 text-blue-600 hover:bg-blue-50 transition cursor-pointer">添加好友</button>
-                        <button onclick="toggleGroupModal(true)" class="text-xs bg-white px-2 py-1 rounded-lg shadow-sm border border-slate-200 text-blue-600 hover:bg-blue-50 transition cursor-pointer">创建群组</button>
+                        <button onclick="toggleAddFriendModal(true)" class="text-xs bg-white px-2.5 py-1.5 rounded-lg shadow-sm border border-slate-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300 hover:shadow-md transition cursor-pointer button-hover-lift font-medium">➕ 好友</button>
+                        <button onclick="toggleGroupModal(true)" class="text-xs bg-white px-2.5 py-1.5 rounded-lg shadow-sm border border-slate-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300 hover:shadow-md transition cursor-pointer button-hover-lift font-medium">👥 群组</button>
                     </div>
                 `;
                 if (globalFriends.length === 0 && globalGroups.length === 0) {
@@ -973,7 +1046,7 @@
             if (type === "public") metaText = "校内公共聊天室，所有在线成员可见";
             else if (type === "group") metaText = "群组讨论，仅群成员可见";
             else if (type === "ai") metaText = "AI 对话助手，由 Gemini 驱动";
-            else metaText = "私聊通道，仅发送双方可见";
+            else metaText = "私聊，仅发送双方可见";
             document.getElementById('activeChatMeta').innerText = metaText;
             const sessionKey = `${type}:${id}`;
             if (!cacheMessages[sessionKey]) cacheMessages[sessionKey] = [];
@@ -989,7 +1062,7 @@
                 NotificationManager.onChatWindowOpened(type, id);
             }
 
-            // 绑定滚动事件监听（只绑定一次）
+            // 绑定滚动事件监听
             const chatBox = document.getElementById('chatBox');
             if (chatBox && !chatBox._scrollListenerBound) {
                 chatBox.addEventListener('scroll', () => {
@@ -998,7 +1071,7 @@
                 chatBox._scrollListenerBound = true;
             }
             
-            // 显示/隐藏在线人数（仅公共聊天室显示）
+            // 显示/隐藏在线人数
             const onlineCountBadge = document.getElementById('onlineCountBadge');
             if (type === 'public') {
                 onlineCountBadge.classList.remove('hidden');
@@ -1020,7 +1093,6 @@
             }
         }
 
-        // 消息路由函数已分离到 chatHistory.js
 
         function renderChatBubbles() {
             if (!activeTarget) return;
@@ -1447,9 +1519,7 @@
             return result;
         }
 
-        /**
-         * 同步高亮层的滚动位置
-         */
+
         function syncHighlightScroll() {
             const input = document.getElementById('messageInput');
             const highlight = document.getElementById('mentionHighlight');
@@ -1469,21 +1539,19 @@
             const text = input.value;
             const parts = parseAndHighlightMentions(text);
             
-            // 清空高亮层
+
             highlight.innerHTML = '';
             
-            // 构建高亮HTML
+
             parts.forEach(part => {
                 const span = document.createElement('span');
                 
                 if (part.type === 'mention-valid') {
-                    // 对于有效的@提及，显示红色背景和加粗
                     span.style.color = 'transparent';
-                    span.style.backgroundColor = 'rgba(239, 68, 68, 0.3)'; // 半透明红色背景
+                    span.style.backgroundColor = 'rgba(239, 68, 68, 0.3)';
                     span.style.textShadow = 'none';
                     span.innerText = part.content;
                 } else {
-                    // 普通文本：透明，用来与输入框文本对齐
                     span.style.color = 'transparent';
                     span.innerText = part.content;
                 }
@@ -1491,7 +1559,6 @@
                 highlight.appendChild(span);
             });
             
-            // 同步滚动位置
             highlight.scrollLeft = input.scrollLeft;
             highlight.scrollTop = input.scrollTop;
         }
@@ -1541,7 +1608,7 @@
                         appendPendingMessage(result.url);
                         ws.send(JSON.stringify(payload));
                     } else {
-                        alert("图片上传成功，但 WebSocket 未连接，无法发送消息内容");
+                        alert("图片上传成功，但无法发送消息内容");
                     }
                 } else {
                     alert("图片上传失败: " + (result.error || "服务端异常"));
@@ -1604,7 +1671,7 @@
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     error.innerText = "";
                 } else {
-                    error.innerText = "WebSocket 未连接，请稍后重试。";
+                    error.innerHTML = '<div class="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-600 flex items-start gap-2"><span>⚠️</span><span>WebSocket 未连接，请稍后重试。</span></div>';
                 }
             } else {
                 modal.classList.add('hidden');
@@ -1657,9 +1724,13 @@
 
         function toggleGroupModal(visible) {
             const modal = document.getElementById('groupModal');
+            const errorDiv = document.getElementById('groupModalError');
+            const errorText = document.getElementById('groupModalErrorText');
             if (visible) {
                 if (globalFriends.length < 2) {
-                    alert("当前好友数量不足2人，无法创建群组");
+                    errorText.textContent = '当前好友数量不足2人，无法创建群组';
+                    errorDiv.classList.remove('hidden');
+                    setTimeout(() => errorDiv.classList.add('hidden'), 3000);
                     return;
                 }
                 modal.classList.remove('hidden');
@@ -1667,7 +1738,7 @@
                 listContainer.innerHTML = "";
                 globalFriends.forEach(f => {
                     const item = document.createElement('div');
-                    item.className = "group-invite-item flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 cursor-pointer text-xs";
+                    item.className = "group-invite-item flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 cursor-pointer text-xs transition";
                     item.dataset.username = f;
                     item.innerHTML = `
                         <span>${f}</span>
@@ -1694,13 +1765,20 @@
 
         function submitCreateGroup() {
             const groupName = document.getElementById('newGroupName').value.trim();
+            const errorDiv = document.getElementById('groupModalError');
+            const errorText = document.getElementById('groupModalErrorText');
+            
             if (!groupName) {
-                alert("群聊名称不能为空");
+                errorText.textContent = '群聊名称不能为空';
+                errorDiv.classList.remove('hidden');
+                setTimeout(() => errorDiv.classList.add('hidden'), 3000);
                 return;
             }
             const selectedItems = document.querySelectorAll('#modalFriendsChecklist .group-invite-item.selected');
             if (selectedItems.length < 2) {
-                alert("至少需选择 2 位好友才能创建群组");
+                errorText.textContent = '至少需选择 2 位好友才能创建群组';
+                errorDiv.classList.remove('hidden');
+                setTimeout(() => errorDiv.classList.add('hidden'), 3000);
                 return;
             }
             const members = Array.from(selectedItems).map(item => item.dataset.username);
