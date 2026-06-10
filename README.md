@@ -51,7 +51,7 @@ go run main.go
 |--------|------|----------|
 | `main.go` | Backend Core | 系统中枢，集成 SQLite、RESTful API、WebSocket、鉴权、路由、群组管理、管理员指令 |
 | `index.html` | Main UI | 聊天室主界面，支持多端自适应、消息历史缓存、在线人数统计、WebSocket 通信 |
-| `admin.html` | Admin Panel | 内置管理后台，暗色科技风登录，支持用户/消息审查、删除、全局广播、全局禁言 |
+| `admin.html` | Admin Panel | 内置管理后台，支持用户/消息审查、删除、全局广播、全局禁言 |
 | `forgot-password.html` | Account Tool | 账户重置面板，通过后端 API 重置密码 |
 
 ---
@@ -64,13 +64,6 @@ go run main.go
 
 ---
 
-## 路线图 (Roadmap)
-
-- [x] 基于 Go + SQLite 的轻量级高并发后端
-- [x] 支持多群聊切换及独立会话缓存
-- [x] 响应式前端布局
-
----
 
 ## 参与贡献
 
