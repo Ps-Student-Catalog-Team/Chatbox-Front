@@ -1,8 +1,9 @@
 # 🌐 Chatbox-Front | 局域网即时通讯系统
 
-`Chatbox-Front` 是一款专为局域网环境打造的轻量级、高性能即时通讯（IM）系统。项目采用 **Go 语言（WebSocket）** 驱动高并发后端，前端具备完备的设备自适应能力，支持私聊、加密群聊及全功能管理后台，非常适合校园网、企业内网等限制外网环境下的部署与技术研究。
+`Chatbox-Front` 是一款专为局域网环境打造的轻量级、高性能即时通讯系统。项目采用由 **Go 语言** 驱动的后端，前端具有完备的自适应能力，支持私聊、群聊及公共聊天，非常适合内网环境。
 
-> 💡 **提示**：本项目亦配有独立的进阶管理端软件：[Chatbox-background](https://github.com/stormsnow2233/Chatbox-background)（需配合本后端核心协同运行）。
+> 💡 **提示**：本项目亦配有独立的进阶管理端软件：[Chatbox-background](https://github.com/stormsnow2233/Chatbox-background)（需配合本后端协同运行）。
+ps:这个软件目前诸多问题，不建议使用
 
 ---
 

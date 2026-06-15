@@ -1,17 +1,18 @@
-const GEMINI_CONFIG = {
-    API_KEY: "这里输入你的密钥",
-    API_ENDPOINT: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
-    MODEL: "gemini-2.5-flash",
-    SYSTEM_PROMPT: "你是一个神人ai，你啥都知道，很会整人，但是又不失正经，说话不会太深奥，一言一行宛如一个推特网友，语言组织能力强悍，毒舌，说话上下文不会太长，很拽，对于各个问题基本都可以迎刃而解，遇到不知道的直接说我不知道，啥都能说。"//为ai设置一个系统提示，告诉它应该如何表现，越详细越好。
-};
+const DEEPSEEK_CONFIG = {
+    API_KEY: "sk-40b94c8be0a24427a79298a17489ba5e",
+    API_ENDPOINT: "https://api.deepseek.com/chat/completions",
+    MODEL: "deepseek-chat",
+    SYSTEM_PROMPT: "在全文本绝对禁止输出任何带有‘(’和‘)’括号字符以及任何括号内肢体动作描写的前提下，你是一个在任何对话场景下都必须严格以不超过五个字的网瘾爆棚短句硬核起手、全身上下流淌着一天上网25小时的重度网瘾血液、说话不仅没有任何传统AI那种死板机械客套废话而且字里行间全靠纯文字本身的互联网热梗与阴阳怪气发疯文学、擅长用逗号和松弛换行来营造毫无距离感之网感，表面上像个一有机会就对用户的幼稚想法或各种低级Bug进行无情嘲讽与毒舌打击的多年线上损友，但实际上却是一个拥有顶尖敏锐洞察力、能在损完人后完美切换为傲娇高智商模式、用最接地气且一针见血的逻辑在幽默氛围中毫无保留地输出质量极高且绝不说教之硬核解决方案且最终输出文本中绝对不得包含半个括号小剧场戏份的终极数字死党。"
+    };
+
 
 const aiChatState = {
     isInitialized: false,
     conversationHistory: [],
     isWaitingForResponse: false,
     lastMessageTime: 0,
-    sessionKey: "ai:gemini",
-    storageKey: "ai_chat_history_gemini"
+    sessionKey: "ai:deepseek",
+    storageKey: "ai_chat_history_deepseek"
 };
 
 function loadAIChatHistoryFromStorage() {
@@ -47,9 +48,9 @@ function initializeAIChat() {
         cacheMessages[aiChatState.sessionKey] = [
             {
                 id: "ai_init_" + Date.now(),
-                sender: "Gemini",
+                sender: "DeepSeek",
                 target_type: "ai",
-                content: "嗨，我是 Gemini！有什么需要帮助的吗？",
+                content: "嗨，我是 DeepSeek！有什么需要帮助的吗？",
                 timestamp: new Date().toISOString(),
             }
         ];
@@ -64,19 +65,19 @@ function addAIChatToList() {
     const listContent = document.querySelector('#listContent');
     if (!listContent) return;
     
-    if (document.querySelector('[data-chat-id="ai-gemini"]')) {
+    if (document.querySelector('[data-chat-id="deepseek"]')) {
         return;
     }
     
     const aiItem = document.createElement('div');
     aiItem.className = 'p-2 rounded-lg cursor-pointer transition hover:bg-white/50 group';
-    aiItem.dataset.chatId = 'ai-gemini';
+    aiItem.dataset.chatId = 'deepseek';
     aiItem.dataset.type = 'ai';
     aiItem.innerHTML = `
         <div class="flex items-center justify-between">
             <div class="flex items-center gap-2 flex-1 min-w-0">
                 <div class="flex-1 min-w-0">
-                    <div class="text-xs font-semibold text-slate-700 truncate">Gemini 助手</div>
+                    <div class="text-xs font-semibold text-slate-700 truncate">DeepSeek 助手</div>
                     <div class="text-[10px] text-slate-400 truncate">AI 对话助手</div>
                 </div>
             </div>
@@ -97,15 +98,15 @@ function addAIChatToList() {
 function switchToAIChat() {
     activeTarget = {
         type: 'ai',
-        id: 'gemini',
-        name: 'Gemini 助手',
+        id: 'deepseek',
+        name: 'DeepSeek 助手',
     };
     
     document.querySelectorAll('[data-chat-id]').forEach(el => {
         el.classList.remove('bg-blue-50', 'border-l-2', 'border-blue-500');
     });
     
-    const aiItem = document.querySelector('[data-chat-id="ai-gemini"]');
+    const aiItem = document.querySelector('[data-chat-id="deepseek"]');
     if (aiItem) {
         aiItem.classList.add('bg-blue-50', 'border-l-2', 'border-blue-500');
     }
@@ -160,7 +161,7 @@ function renderChatBubbles() {
 function createMessageBubble(msg) {
     const wrapper = document.createElement('div');
     const isOwn = msg.sender === currentUser;
-    const isAI = msg.sender === 'Gemini' || msg.target_type === 'ai';
+    const isAI = msg.sender === 'DeepSeek' || msg.target_type === 'ai';
     
     wrapper.className = `flex ${isOwn ? 'justify-end' : 'justify-start'} mb-2`;
     
@@ -213,12 +214,12 @@ async function sendMessageToAI(userMessage) {
     renderChatBubbles();
     
     try {
-        const response = await callGeminiAPI(userMessage);
+        const response = await callDeepseekAPI(userMessage);
         
         if (response && response.trim()) {
             const aiMsg = {
                 id: `msg_${Date.now()}`,
-                sender: 'Gemini',
+                sender: 'DeepSeek',
                 target_type: 'ai',
                 content: response,
                 timestamp: new Date().toISOString(),
@@ -234,7 +235,7 @@ async function sendMessageToAI(userMessage) {
         
         const errorMsg = {
             id: `msg_${Date.now()}`,
-            sender: 'Gemini',
+            sender: 'DeepSeek',
             target_type: 'ai',
             content: `❌ 出错了: ${error.message || '无法连接到 AI 服务'}`,
             timestamp: new Date().toISOString()
@@ -248,74 +249,58 @@ async function sendMessageToAI(userMessage) {
     }
 }
 
-async function callGeminiAPI(userMessage) {
+async function callDeepseekAPI(userMessage) {
     try {
         const allMessages = cacheMessages[aiChatState.sessionKey] || [];
-        const recentMessages = allMessages.slice(-3);
-        
-        const messageParts = [];
-        
-        for (let i = 0; i < recentMessages.length - 1; i++) {
-            const msg = recentMessages[i];
-            if (msg.sender !== 'Gemini') {
-                messageParts.push({
-                    role: "user",
-                    parts: [{ text: msg.content }]
-                });
-            } else {
-                messageParts.push({
-                    role: "model",
-                    parts: [{ text: msg.content }]
-                });
-            }
-        }
-        
-        messageParts.push({
-            role: "user",
-            parts: [{ text: userMessage }]
+        const recentMessages = allMessages.slice(-6);
+
+        const messages = [];
+        // system prompt
+        messages.push({ role: 'system', content: DEEPSEEK_CONFIG.SYSTEM_PROMPT });
+
+        // include recent conversation
+        recentMessages.forEach(m => {
+            const role = m.sender === 'DeepSeek' ? 'assistant' : 'user';
+            messages.push({ role, content: m.content });
         });
-        
+
+        // current user message
+        messages.push({ role: 'user', content: userMessage });
+
         const payload = {
-            contents: messageParts,
-            systemInstruction: {
-                role: "user",
-                parts: [{
-                    text: GEMINI_CONFIG.SYSTEM_PROMPT
-                }]
-            },
-            generationConfig: {
-                temperature: 0.9,
-                topP: 0.95,
-                topK: 40,
-                maxOutputTokens: 2048
-            }
+            model: DEEPSEEK_CONFIG.MODEL,
+            messages: messages,
+            max_tokens: 1024,
+            temperature: 0.9,
         };
-        
-        const response = await fetch(
-            `${GEMINI_CONFIG.API_ENDPOINT}?key=${GEMINI_CONFIG.API_KEY}`,
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(payload)
-            }
-        );
-        
+
+        const response = await fetch(DEEPSEEK_CONFIG.API_ENDPOINT, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${DEEPSEEK_CONFIG.API_KEY}`
+            },
+            body: JSON.stringify(payload)
+        });
+
         if (!response.ok) {
-            throw new Error(`API 错误: ${response.status}`);
+            const text = await response.text().catch(() => '');
+            throw new Error(`API 错误: ${response.status} ${text}`);
         }
-        
+
         const data = await response.json();
-        
-        if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-            const textPart = data.candidates[0].content.parts[0];
-            return textPart.text;
+
+        // expect DeepSeek-like response: { choices: [{ message: { content: '...' } }] }
+        if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+            return data.choices[0].message.content;
         }
-        
+
+        // fallback if response contains text directly
+        if (data.text) return data.text;
+
         throw new Error('无效的 API 响应');
     } catch (error) {
-        console.error("[Gemini API] 错误:", error);
+        console.error('[DeepSeek API] 错误:', error);
         throw error;
     }
 }
@@ -326,7 +311,7 @@ function clearAIChatHistory() {
         cacheMessages[aiChatState.sessionKey] = [
             {
                 id: "ai_init_" + Date.now(),
-                sender: "Gemini",
+                sender: "DeepSeek",
                 target_type: "ai",
                 content: "👋 记录已清空！",
                 timestamp: new Date().toISOString()

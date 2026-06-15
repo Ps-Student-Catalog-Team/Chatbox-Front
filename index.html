@@ -239,7 +239,7 @@
                                     <span>🗑️</span> 清空对话记录
                                 </button>
                                 <button onclick="toggleChatMenu()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
-                                    <span>ℹ️</span> 关于 Gemini
+                                    <span>ℹ️</span> 关于 DeepSeek
                                 </button>
                             </div>
                             <!-- 通用菜单项 -->
@@ -860,22 +860,20 @@
                 pubDiv.onclick = () => { selectActiveChat('public', 'global', '公共聊天室'); loadHistoryMessages('public', 'global'); };
                 content.appendChild(pubDiv);
 
-                // ============ 添加 AI 助手项 ============
+                // ============ 添加 AI 助手项（静态渲染，避免依赖外部脚本延迟插入） ============
                 const aiDiv = document.createElement('div');
                 const isAIActive = (activeTarget && activeTarget.type === 'ai');
                 aiDiv.className = `p-2 md:p-3 rounded-xl cursor-pointer transition text-xs md:text-sm flex items-center space-x-2 md:space-x-3 mb-1 sidebar-item ${isAIActive ? 'bg-blue-50 text-blue-700 font-semibold border-l-3 border-blue-500' : 'hover:bg-slate-100 text-slate-700'}`;
                 aiDiv.setAttribute('data-chat-type', 'ai');
-                aiDiv.setAttribute('data-chat-id', 'gemini');
-                aiDiv.innerHTML = `<span class="text-base">🤖</span><span>Gemini 助手</span>`;
+                aiDiv.setAttribute('data-chat-id', 'deepseek');
+                aiDiv.innerHTML = `<span class="text-base">🤖</span><span>DeepSeek 助手</span>`;
                 aiDiv.onclick = () => { 
-                    selectActiveChat('ai', 'gemini', 'Gemini 助手');
-                    if (typeof switchToAIChat === 'function') {
-                        switchToAIChat();
-                    }
+                    selectActiveChat('ai', 'deepseek', 'DeepSeek 助手');
+                    if (typeof switchToAIChat === 'function') switchToAIChat();
                 };
                 content.appendChild(aiDiv);
 
-                const sortedKeys = Object.keys(cacheMessages).filter(key => key !== "public:global" && key !== "ai:gemini");
+                const sortedKeys = Object.keys(cacheMessages).filter(key => key !== "public:global" && key !== "ai:deepseek");
                 for (let key of sortedKeys) {
                     const [type, id] = key.split(':');
                     const div = document.createElement('div');
@@ -968,11 +966,11 @@
             activeTarget = { type, id, name: displayName };
             document.getElementById('emptyView').classList.add('hidden');
             document.getElementById('activeChatWindow').classList.remove('hidden');
-            document.getElementById('activeChatName').innerHTML = type === 'public' ? '公共聊天室' : type === 'ai' ? 'Gemini 助手' : `${displayName}`;
+            document.getElementById('activeChatName').innerHTML = type === 'public' ? '公共聊天室' : type === 'ai' ? 'DeepSeek 助手' : `${displayName}`;
             let metaText = "";
             if (type === "public") metaText = "校内公共聊天室，所有在线成员可见";
             else if (type === "group") metaText = "群组讨论，仅群成员可见";
-            else if (type === "ai") metaText = "AI 对话助手，由 Gemini 驱动";
+            else if (type === "ai") metaText = "AI 对话助手，由 DeepSeek 驱动";
             else metaText = "私聊通道，仅发送双方可见";
             document.getElementById('activeChatMeta').innerText = metaText;
             const sessionKey = `${type}:${id}`;
