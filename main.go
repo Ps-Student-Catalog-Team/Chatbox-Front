@@ -31,13 +31,15 @@ type User struct {
 }
 
 type Message struct {
-	ID         int64  `json:"id"`
-	TargetType string `json:"target_type"`
-	TargetID   string `json:"target_id"`
-	Sender     string `json:"sender"`
-	Content    string `json:"content"`
-	Timestamp  int64  `json:"timestamp"`
-	AvatarURL  string `json:"avatar_url"`
+	ID         int64    `json:"id"`
+	TargetType string   `json:"target_type"`
+	TargetID   string   `json:"target_id"`
+	Sender     string   `json:"sender"`
+	Content    string   `json:"content"`
+	Timestamp  int64    `json:"timestamp"`
+	AvatarURL  string   `json:"avatar_url"`
+	ReplyToID  *int64   `json:"reply_to_id,omitempty"`
+	ReplyToMsg *Message `json:"reply_to_msg,omitempty"`
 }
 
 type AdminMessage struct {
@@ -159,7 +161,8 @@ func initDB() {
 		sender TEXT,
 		content TEXT,
 		timestamp INTEGER,
-		avatar_url TEXT
+		avatar_url TEXT,
+		reply_to_id INTEGER
 	);`)
 	if err != nil {
 		log.Fatalf("创建messages表失败: %v", err)
@@ -171,6 +174,7 @@ func initDB() {
 	// 如果旧的数据库缺少新列，尝试添加（忽略错误）
 	_, _ = db.Exec("ALTER TABLE users ADD COLUMN signature TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE users ADD COLUMN background_url TEXT DEFAULT ''")
+	_, _ = db.Exec("ALTER TABLE messages ADD COLUMN reply_to_id INTEGER")
 }
 
 func getIP(r *http.Request) string {
@@ -450,12 +454,26 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			tType, _ := payload["target_type"].(string)
 			tID, _ := payload["target_id"].(string)
 			content, _ := payload["content"].(string)
+			replyToIDFloat, _ := payload["reply_to_id"].(float64)
 
 			var avatar string
 			_ = db.QueryRow("SELECT avatar_url FROM users WHERE username = ?", authenticatedUser).Scan(&avatar)
 
-			res, err := db.Exec(`INSERT INTO messages (target_type, target_id, sender, content, timestamp, avatar_url) 
-				VALUES (?, ?, ?, ?, ?, ?)`, tType, tID, authenticatedUser, content, time.Now().Unix(), avatar)
+			var replyToID *int64
+			if replyToIDFloat > 0 {
+				id := int64(replyToIDFloat)
+				replyToID = &id
+			}
+
+			var err error
+			var res sql.Result
+			if replyToID != nil {
+				res, err = db.Exec(`INSERT INTO messages (target_type, target_id, sender, content, timestamp, avatar_url, reply_to_id) 
+					VALUES (?, ?, ?, ?, ?, ?, ?)`, tType, tID, authenticatedUser, content, time.Now().Unix(), avatar, *replyToID)
+			} else {
+				res, err = db.Exec(`INSERT INTO messages (target_type, target_id, sender, content, timestamp, avatar_url) 
+					VALUES (?, ?, ?, ?, ?, ?)`, tType, tID, authenticatedUser, content, time.Now().Unix(), avatar)
+			}
 			if err != nil {
 				continue
 			}
@@ -469,7 +487,19 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				Content:    content,
 				Timestamp:  time.Now().Unix(),
 				AvatarURL:  avatar,
+				ReplyToID:  replyToID,
 			}
+
+			// 如果是回复消息，查询被回复的消息信息
+			if replyToID != nil && *replyToID > 0 {
+				var repliedMsg Message
+				err := db.QueryRow(`SELECT id, sender, content, avatar_url FROM messages WHERE id = ?`, *replyToID).
+					Scan(&repliedMsg.ID, &repliedMsg.Sender, &repliedMsg.Content, &repliedMsg.AvatarURL)
+				if err == nil {
+					msg.ReplyToMsg = &repliedMsg
+				}
+			}
+
 			broadcastMessage(msg)
 
 		case "withdraw_message":
@@ -757,6 +787,21 @@ func broadcastMessage(msg Message) {
 		"avatar_url":  msg.AvatarURL,
 	}
 
+	// 如果是回复消息，添加回复信息
+	if msg.ReplyToID != nil {
+		msgWithType["reply_to_id"] = *msg.ReplyToID
+		// 从数据库获取被回复消息信息（此时在持有锁的情况下，需要小心处理）
+		// 由于我们持有 RLock，我们只能进行查询操作
+		if msg.ReplyToMsg != nil {
+			msgWithType["reply_to_msg"] = map[string]interface{}{
+				"id":         msg.ReplyToMsg.ID,
+				"sender":     msg.ReplyToMsg.Sender,
+				"content":    msg.ReplyToMsg.Content,
+				"avatar_url": msg.ReplyToMsg.AvatarURL,
+			}
+		}
+	}
+
 	switch msg.TargetType {
 	case "public":
 		for _, conn := range clients {
@@ -858,12 +903,12 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		rows, err = db.Query(`SELECT id, target_type, target_id, sender, content, timestamp, avatar_url
+		rows, err = db.Query(`SELECT id, target_type, target_id, sender, content, timestamp, avatar_url, reply_to_id
 			FROM messages
 			WHERE target_type = 'private' AND ((target_id = ? AND sender = ?) OR (target_id = ? AND sender = ?))
 			ORDER BY id DESC LIMIT ?`, targetID, currentUser, currentUser, targetID, limit)
 	} else {
-		rows, err = db.Query(`SELECT id, target_type, target_id, sender, content, timestamp, avatar_url
+		rows, err = db.Query(`SELECT id, target_type, target_id, sender, content, timestamp, avatar_url, reply_to_id
 			FROM messages WHERE target_type = ? AND target_id = ?
 			ORDER BY id DESC LIMIT ?`, targetType, targetID, limit)
 	}
@@ -872,7 +917,18 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		for rows.Next() {
 			var m Message
-			_ = rows.Scan(&m.ID, &m.TargetType, &m.TargetID, &m.Sender, &m.Content, &m.Timestamp, &m.AvatarURL)
+			var replyToID *int64
+			_ = rows.Scan(&m.ID, &m.TargetType, &m.TargetID, &m.Sender, &m.Content, &m.Timestamp, &m.AvatarURL, &replyToID)
+			m.ReplyToID = replyToID
+
+			// 如果有回复，获取被回复消息的详细信息
+			if replyToID != nil && *replyToID > 0 {
+				var repliedMsg Message
+				_ = db.QueryRow(`SELECT id, sender, content, avatar_url FROM messages WHERE id = ?`, *replyToID).
+					Scan(&repliedMsg.ID, &repliedMsg.Sender, &repliedMsg.Content, &repliedMsg.AvatarURL)
+				m.ReplyToMsg = &repliedMsg
+			}
+
 			msgs = append(msgs, m)
 		}
 		rows.Close()

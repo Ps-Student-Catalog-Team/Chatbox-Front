@@ -55,6 +55,28 @@
             box-shadow: 0 10px 18px rgba(15, 23, 42, 0.14);
         }
 
+        .reply-info {
+            background: rgba(0, 0, 0, 0.05);
+            border-left: 3px solid #0ea5e9;
+            padding: 0.5rem 0.75rem;
+            margin-bottom: 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+        }
+
+        .reply-info-sender {
+            color: #0ea5e9;
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+        }
+
+        .reply-info-content {
+            color: #64748b;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         .withdraw-option {
             position: absolute;
             left: -76px;
@@ -75,6 +97,62 @@
             pointer-events: none;
         }
 
+        .reply-option {
+            position: absolute;
+            left: -76px;
+            top: 50%;
+            transform: translateY(-50%) translateX(-10px);
+            background: #0ea5e9;
+            color: #fff;
+            border: none;
+            border-radius: 999px;
+            padding: 0.45rem 0.85rem;
+            font-size: 0.72rem;
+            line-height: 1;
+            cursor: pointer;
+            box-shadow: 0 16px 30px rgba(15, 23, 42, 0.18);
+            opacity: 0;
+            transition: opacity 160ms ease, transform 160ms ease;
+            z-index: 10;
+            pointer-events: none;
+        }
+        
+        .reply-option.right {
+            left: auto;
+            right: -76px;
+            transform: translateY(-50%) translateX(10px);
+        }
+        
+        .reply-option.right.show {
+            transform: translateY(-50%) translateX(0);
+        }
+        
+        .withdraw-option ~ .reply-option {
+            top: calc(50% + 38px);
+        }
+        
+        .withdraw-option ~ .reply-option.right {
+            top: calc(50% + 38px);
+        }
+
+        .reply-option.show {
+            opacity: 1;
+            transform: translateY(-50%) translateX(0);
+            pointer-events: auto;
+        }
+
+        .reply-option.mobile {
+            left: auto;
+            right: 0;
+            top: auto;
+            bottom: calc(100% - 38px);
+            transform: translateY(-10px);
+        }
+
+        .reply-option.mobile.show {
+            transform: translateY(0);
+        }
+
         .withdraw-option.show {
             opacity: 1;
             transform: translateY(-50%) translateX(0);
@@ -91,6 +169,52 @@
 
         .withdraw-option.mobile.show {
             transform: translateY(0);
+        }
+
+        .reply-state-box {
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .reply-state-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .reply-state-label {
+            font-size: 0.75rem;
+            color: #0ea5e9;
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+        }
+
+        .reply-state-text {
+            font-size: 0.875rem;
+            color: #64748b;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .reply-state-cancel {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 1.25rem;
+            padding: 0 0.5rem;
+            line-height: 1;
+            transition: color 150ms ease;
+        }
+
+        .reply-state-cancel:hover {
+            color: #64748b;
         }
 
         .message-wrapper {
@@ -243,23 +367,25 @@
                 <div id="chatBox" class="flex-1 p-3 md:p-6 overflow-y-auto space-y-3 md:space-y-4 bg-slate-50/60 no-scrollbar"></div>
 
                 <div class="p-2 md:p-4 bg-white border-t border-slate-100">
-                    <div class="flex items-center space-x-1 md:space-x-2">
-                        <button onclick="triggerImageUpload()" class="p-1.5 md:p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer font-bold text-lg md:text-xl" title="上传JPG/PNG/GIF图片">
-                            📎
-                        </button>
-                        <input type="file" id="imageFileInput" accept=".jpg,.jpeg,.png,.gif" class="hidden" onchange="uploadFileToServer(this)">
+                    <div id="messageInputArea" class="space-y-2">
+                        <div class="flex items-center space-x-1 md:space-x-2">
+                            <button onclick="triggerImageUpload()" class="p-1.5 md:p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer font-bold text-lg md:text-xl" title="上传JPG/PNG/GIF图片">
+                                📎
+                            </button>
+                            <input type="file" id="imageFileInput" accept=".jpg,.jpeg,.png,.gif" class="hidden" onchange="uploadFileToServer(this)">
 
-                        <div class="flex-1 relative" style="font-family: inherit;">
-                            <input type="text" id="messageInput" placeholder="请输入消息..." onkeydown="handleMessageInputKeydown(event)" oninput="updateMentionHighlight()" onscroll="syncHighlightScroll()"
-                                   class="w-full px-2 md:px-4 py-1.5 md:py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs md:text-sm bg-slate-50/50 relative z-10" style="position: relative; z-index: 10;">
-                            <!-- @提及高亮层 -->
-                            <div id="mentionHighlight" class="absolute top-0 left-0 px-2 md:px-4 py-1.5 md:py-2 text-xs md:text-sm pointer-events-none rounded-xl" style="width: 100%; max-height: 100px; overflow: hidden; font-family: inherit; white-space: pre-wrap; word-wrap: break-word; background: transparent; z-index: 1; line-height: inherit;">
+                            <div class="flex-1 relative" style="font-family: inherit;">
+                                <input type="text" id="messageInput" placeholder="请输入消息..." onkeydown="handleMessageInputKeydown(event)" oninput="updateMentionHighlight()" onscroll="syncHighlightScroll()"
+                                       class="w-full px-2 md:px-4 py-1.5 md:py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs md:text-sm bg-slate-50/50 relative z-10" style="position: relative; z-index: 10;">
+                                <!-- @提及高亮层 -->
+                                <div id="mentionHighlight" class="absolute top-0 left-0 px-2 md:px-4 py-1.5 md:py-2 text-xs md:text-sm pointer-events-none rounded-xl" style="width: 100%; max-height: 100px; overflow: hidden; font-family: inherit; white-space: pre-wrap; word-wrap: break-word; background: transparent; z-index: 1; line-height: inherit;">
+                                </div>
                             </div>
+                            
+                            <button onclick="sendMessage()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 md:px-5 py-1.5 md:py-2 rounded-xl text-xs md:text-sm font-medium transition cursor-pointer shadow-sm">
+                                发送
+                            </button>
                         </div>
-                        
-                        <button onclick="sendMessage()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 md:px-5 py-1.5 md:py-2 rounded-xl text-xs md:text-sm font-medium transition cursor-pointer shadow-sm">
-                            发送
-                        </button>
                     </div>
                 </div>
             </div>
@@ -508,6 +634,7 @@
         let currentTab = "chats";
         let activeTarget = null;
         let currentAvatar = { type: 'text', text: 'U', color: '#2563eb', url: '' };
+        let replyingTo = null; // 当前要回复的消息
         
         let globalFriends = [];
         let globalGroups = [];
@@ -954,6 +1081,9 @@
             // 清除新消息标记
             clearNewMessageMarks();
             
+            // 清除回复状态
+            cancelReply();
+            
             renderChatBubbles();
             renderSidebarList();
             
@@ -1136,6 +1266,22 @@
             if (msg.pending) {
                 bubble.classList.add('pending');
             }
+            
+            // 如果是回复消息，添加被回复消息的预览
+            if (msg.reply_to_msg) {
+                const replyInfo = document.createElement('div');
+                replyInfo.className = 'reply-info';
+                const replyInfoSender = document.createElement('div');
+                replyInfoSender.className = 'reply-info-sender';
+                replyInfoSender.innerText = `@${msg.reply_to_msg.sender}`;
+                replyInfo.appendChild(replyInfoSender);
+                const replyInfoContent = document.createElement('div');
+                replyInfoContent.className = 'reply-info-content';
+                replyInfoContent.innerText = (msg.reply_to_msg.content || '[图片]').substring(0, 50);
+                replyInfo.appendChild(replyInfoContent);
+                bubble.appendChild(replyInfo);
+            }
+            
             if (msg.content && msg.content.startsWith('/uploads/')) {
                 const img = document.createElement('img');
                 img.src = httpUri + msg.content;
@@ -1168,16 +1314,22 @@
                 });
             }
 
-            if (isMe && !msg.pending) {
-                bubble.classList.add('own-message');
+            if (!msg.pending) {
+                if (isMe) {
+                    bubble.classList.add('own-message');
+                }
                 const isMobile = window.innerWidth < 768;
 
                 let longPressTimer = null;
-                const showOption = () => {
-                    toggleWithdrawOption(wrapper, msg, isMobile);
+                const showOptions = () => {
+                    if (isMe) {
+                        toggleWithdrawOption(wrapper, msg, isMobile);
+                    } else {
+                        toggleReplyOption(wrapper, msg, isMobile, true);  // 别人的消息，回复按钮在右边（已反转）
+                    }
                 };
                 const startLongPress = () => {
-                    longPressTimer = setTimeout(showOption, 600);
+                    longPressTimer = setTimeout(showOptions, 600);
                 };
                 const cancelLongPress = () => {
                     if (longPressTimer) {
@@ -1189,7 +1341,7 @@
                 bubble.addEventListener('click', (e) => {
                     if (!isMobile) {
                         e.stopPropagation();
-                        toggleWithdrawOption(wrapper, msg, false);
+                        showOptions();
                     }
                 });
                 bubble.addEventListener('touchstart', startLongPress);
@@ -1216,6 +1368,13 @@
                 avatar_url: currentAvatar.url || '',
                 pending: true
             };
+            
+            // 如果有回复消息，添加回复信息
+            if (replyingTo) {
+                pendingMsg.reply_to_id = replyingTo.id;
+                pendingMsg.reply_to_msg = replyingTo;
+            }
+            
             cacheMessages[sessionKey].push(pendingMsg);
             renderChatBubbles();
         }
@@ -1236,18 +1395,25 @@
                 return;
             }
             
-            // ============ AI 聊天模式 ============
+            // 构建消息负载
             const payload = {
                 action: "msg",
                 target_type: activeTarget.type,
                 target_id: activeTarget.id,
                 content: text
             };
+            
+            // 如果有回复消息，添加回复信息
+            if (replyingTo) {
+                payload.reply_to_id = replyingTo.id;
+            }
+            
             if (ws && ws.readyState === WebSocket.OPEN) {
                 appendPendingMessage(text);
                 try {
                     ws.send(JSON.stringify(payload));
                     input.value = "";
+                    cancelReply();
                 } catch (err) {
                     console.error("消息发送失败：", err);
                     alert("消息发送失败，请检查连接或刷新页面");
@@ -1259,6 +1425,7 @@
 
         function toggleWithdrawOption(wrapper, msg, isMobile) {
             hideWithdrawOptions();
+            hideReplyOptions();
             const existing = wrapper.querySelector('.withdraw-option');
             if (existing) {
                 existing.remove();
@@ -1278,6 +1445,28 @@
             requestAnimationFrame(() => option.classList.add('show'));
             option._hideTimer = setTimeout(() => {
                 hideWithdrawOption(option);
+            }, 4000);
+            
+            // 在撤回按钮右边显示回复按钮
+            const existingReply = wrapper.querySelector('.reply-option');
+            if (existingReply) {
+                existingReply.remove();
+            }
+            const replyOption = document.createElement('button');
+            replyOption.type = 'button';
+            replyOption.className = 'reply-option';  // 自己的消息：将回复按钮显示在左侧（不添加 right 类）
+            if (isMobile) {
+                replyOption.classList.add('mobile');
+            }
+            replyOption.innerText = '回复';
+            replyOption.onclick = (e) => {
+                e.stopPropagation();
+                startReply(msg);
+            };
+            wrapper.appendChild(replyOption);
+            requestAnimationFrame(() => replyOption.classList.add('show'));
+            replyOption._hideTimer = setTimeout(() => {
+                hideReplyOption(replyOption);
             }, 4000);
         }
 
@@ -1312,6 +1501,104 @@
                 target_id: msg.target_id
             }));
             hideWithdrawOptions();
+        }
+
+        function toggleReplyOption(wrapper, msg, isMobile, isOwnMessage = false) {
+            hideReplyOptions();
+            hideWithdrawOptions();
+            const existing = wrapper.querySelector('.reply-option');
+            if (existing) {
+                existing.remove();
+            }
+            const option = document.createElement('button');
+            option.type = 'button';
+            option.className = 'reply-option';
+            if (isMobile) {
+                option.classList.add('mobile');
+            }
+            if (isOwnMessage) {
+                option.classList.add('right');
+            }
+            option.innerText = '回复';
+            option.onclick = (e) => {
+                e.stopPropagation();
+                startReply(msg);
+            };
+            wrapper.appendChild(option);
+            requestAnimationFrame(() => option.classList.add('show'));
+            option._hideTimer = setTimeout(() => {
+                hideReplyOption(option);
+            }, 4000);
+        }
+
+        function hideReplyOption(option) {
+            if (!option) return;
+            clearTimeout(option._hideTimer);
+            option.classList.remove('show');
+            setTimeout(() => {
+                if (option.parentElement) {
+                    option.remove();
+                }
+            }, 200);
+        }
+
+        function hideReplyOptions() {
+            document.querySelectorAll('.reply-option').forEach(option => hideReplyOption(option));
+        }
+
+        function startReply(msg) {
+            replyingTo = msg;
+            showReplyState();
+            const input = document.getElementById('messageInput');
+            if (input) {
+                input.focus();
+            }
+        }
+
+        function showReplyState() {
+            const container = document.getElementById('messageInputArea');
+            if (!container) return;
+
+            let stateBox = container.querySelector('.reply-state-box');
+            if (!stateBox) {
+                stateBox = document.createElement('div');
+                stateBox.className = 'reply-state-box';
+                container.insertBefore(stateBox, container.firstChild);
+            }
+
+            const content = document.createElement('div');
+            content.className = 'reply-state-content';
+
+            const label = document.createElement('div');
+            label.className = 'reply-state-label';
+            label.innerText = `回复 @${replyingTo.sender}`;
+            content.appendChild(label);
+
+            const text = document.createElement('div');
+            text.className = 'reply-state-text';
+            text.innerText = (replyingTo.content || '[图片]').substring(0, 50);
+            content.appendChild(text);
+
+            stateBox.innerHTML = '';
+            stateBox.appendChild(content);
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = 'reply-state-cancel';
+            cancelBtn.innerHTML = '✕';
+            cancelBtn.onclick = cancelReply;
+            stateBox.appendChild(cancelBtn);
+        }
+
+        function hideReplyState() {
+            const stateBox = document.querySelector('.reply-state-box');
+            if (stateBox) {
+                stateBox.remove();
+            }
+        }
+
+        function cancelReply() {
+            replyingTo = null;
+            hideReplyState();
         }
 
         function removeMessageFromCache(messageId, targetType, targetId) {
@@ -1932,6 +2219,7 @@
                 chatMenu.classList.add('hidden');
             }
             hideWithdrawOptions();
+            hideReplyOptions();
         });
 
         /**
