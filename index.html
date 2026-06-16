@@ -62,6 +62,7 @@
             margin-bottom: 0.5rem;
             border-radius: 0.25rem;
             font-size: 0.75rem;
+            cursor: pointer;
         }
 
         .reply-info-sender {
@@ -219,6 +220,11 @@
 
         .message-wrapper {
             position: relative;
+        }
+
+        .message-wrapper.target-highlight .chat-bubble {
+            box-shadow: 0 8px 20px rgba(14,165,233,0.12);
+            transition: box-shadow 220ms ease;
         }
 
         @keyframes fadeInUp {
@@ -1240,9 +1246,39 @@
             }
         }
 
+        // 滚动到指定消息（根据 data-message-id）并高亮
+        function scrollToMessage(messageId) {
+            if (!messageId) return;
+            const selector = `[data-message-id="${messageId}"]`;
+            let el = document.querySelector(selector);
+            if (!el) {
+                // 尝试 id 选择器备用
+                el = document.getElementById(`message-${messageId}`);
+            }
+            if (!el) return;
+            try {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } catch (err) {
+                // 回退：调整父容器滚动
+                const box = document.getElementById('chatBox');
+                if (box) {
+                    const rect = el.getBoundingClientRect();
+                    const boxRect = box.getBoundingClientRect();
+                    const offset = rect.top - boxRect.top - (box.clientHeight / 2) + (rect.height / 2);
+                    box.scrollTop += offset;
+                }
+            }
+            // 临时高亮
+            el.classList.add('target-highlight');
+            setTimeout(() => el.classList.remove('target-highlight'), 1800);
+        }
+
         function buildMessageBubble(msg, isMe) {
             const wrapper = document.createElement('div');
             wrapper.className = 'flex flex-col space-y-0.5 md:space-y-1 message-wrapper';
+            if (typeof msg.id !== 'undefined' && msg.id !== null) {
+                wrapper.dataset.messageId = msg.id;
+            }
             if (msg.timestamp) {
                 const timeLabel = document.createElement('span');
                 timeLabel.className = 'text-[8px] md:text-[10px] text-slate-400 px-1';
@@ -1271,6 +1307,13 @@
             if (msg.reply_to_msg) {
                 const replyInfo = document.createElement('div');
                 replyInfo.className = 'reply-info';
+                // 点击预览滚动到被引用的消息
+                replyInfo.onclick = (e) => {
+                    e.stopPropagation();
+                    if (msg.reply_to_msg && msg.reply_to_msg.id) {
+                        scrollToMessage(msg.reply_to_msg.id);
+                    }
+                };
                 const replyInfoSender = document.createElement('div');
                 replyInfoSender.className = 'reply-info-sender';
                 replyInfoSender.innerText = `@${msg.reply_to_msg.sender}`;
@@ -1551,6 +1594,13 @@
             showReplyState();
             const input = document.getElementById('messageInput');
             if (input) {
+                const mention = `@${msg.sender} `;
+                if (!input.value || !input.value.startsWith(`@${msg.sender}`)) {
+                    input.value = mention + (input.value || '');
+                    // 将光标放到输入末尾
+                    const pos = input.value.length;
+                    try { input.setSelectionRange(pos, pos); } catch (e) {}
+                }
                 input.focus();
             }
         }
