@@ -19,7 +19,7 @@ ps：请务必确保有3个html、4个js以及2个css文件在同一目录下
 无需操作，只需要打开浏览器，输入“你的ip+:40001”即可
 
 ### ai部署
-这里我写的ai-chat.js是基于谷歌ai的例子，如果想要接入别的ai（例如deepseek）可以自己另外写js，如果使用我的js的话，请前往[谷歌api获取页面](https://aistudio.google.com)获取api密钥并填写在ai-chat.js代码第二行的API_KEY后面
+当前版本已移除 AI 聊天助手功能。如果需要此功能，可保留原始 `ai-chat.js` 作为单独扩展并自行集成。
 
 ---
 

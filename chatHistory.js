@@ -1,13 +1,3 @@
-/**
- * 聊天记录管理模块
- * 包含消息历史加载、缓存、刷新等功能
- */
-
-/**
- * 从服务器加载特定聊天的历史消息
- * @param {string} type - 聊天类型：public, private, group
- * @param {string} id - 聊天ID
- */
 async function loadHistoryMessages(type, id) {
     try {
         const response = await fetch(`${httpUri}/api/messages?type=${type}&id=${id}&limit=200`, {
