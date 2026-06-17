@@ -21,8 +21,6 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// --- 数据结构定义 ---
-
 type User struct {
 	Username  string `json:"username"`
 	AvatarURL string `json:"avatar_url"`
@@ -50,10 +48,10 @@ type AdminMessage struct {
 
 var (
 	db          *sql.DB
-	clients     = make(map[string]*websocket.Conn) // 仅在线路由维护在内存中
+	clients     = make(map[string]*websocket.Conn)
 	globalMute  = false
 	stateMutex  sync.RWMutex
-	adminSecret = "admin666" // 管理员通行密钥
+	adminSecret = "admin666" // 管理员密码
 
 	upgrader = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
@@ -92,11 +90,81 @@ func main() {
 	http.HandleFunc("/api/admin/toggle-mute", handleAdminToggleMute)
 	http.HandleFunc("/api/admin/broadcast", handleAdminBroadcast)
 
-	port := ":40001"
-	fmt.Printf("局域网聊天室已就绪，启动于 %s ...\n", port)
-	if err := http.ListenAndServe(port, nil); err != nil {
+	port := 40001
+	addr := fmt.Sprintf(":%d", port)
+	ip, isPublic := getLocalIP()
+	displayAddr := fmt.Sprintf("%s:%d", ip, port)
+	if isPublic {
+		displayAddr += "(公网)"
+	}
+	fmt.Printf("局域网聊天室已就绪，启动于 %s ...\n", displayAddr)
+	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatalf("服务器启动失败: %v", err)
 	}
+}
+
+func getLocalIP() (string, bool) {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return "127.0.0.1", false
+	}
+
+	privateIP := ""
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			ip := extractIP(addr)
+			if ip == nil || ip.IsLoopback() || ip.To4() == nil {
+				continue
+			}
+			if isPublicIP(ip) {
+				return ip.String(), true
+			}
+			if privateIP == "" {
+				privateIP = ip.String()
+			}
+		}
+	}
+	if privateIP != "" {
+		return privateIP, false
+	}
+	return "127.0.0.1", false
+}
+
+func extractIP(addr net.Addr) net.IP {
+	switch v := addr.(type) {
+	case *net.IPNet:
+		return v.IP
+	case *net.IPAddr:
+		return v.IP
+	default:
+		return nil
+	}
+}
+
+func isPublicIP(ip net.IP) bool {
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return false
+	}
+	if ip4 := ip.To4(); ip4 != nil {
+		return !isPrivateIP(ip4)
+	}
+	return false
+}
+
+func isPrivateIP(ip net.IP) bool {
+	if ip4 := ip.To4(); ip4 != nil {
+		return ip4[0] == 10 ||
+			(ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31) ||
+			(ip4[0] == 192 && ip4[1] == 168)
+	}
+	return false
 }
 
 func initDB() {
@@ -169,9 +237,6 @@ func initDB() {
 	}
 
 	_, _ = db.Exec("INSERT OR IGNORE INTO users (username, password) VALUES ('admin', '123')")
-	_, _ = db.Exec("INSERT OR IGNORE INTO users (username, password) VALUES ('test01', '123')")
-
-	// 如果旧的数据库缺少新列，尝试添加（忽略错误）
 	_, _ = db.Exec("ALTER TABLE users ADD COLUMN signature TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE users ADD COLUMN background_url TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE messages ADD COLUMN reply_to_id INTEGER")
@@ -747,7 +812,6 @@ func sendSyncData(username string) {
 		rows.Close()
 	}
 
-	// 查询加入的群组 （添加owner字段）
 	gRows, err := db.Query(`SELECT g.id, g.name, g.owner FROM groups g 
 		JOIN group_members gm ON g.id = gm.group_id WHERE gm.username = ?`, username)
 	syncGroups := make([]map[string]interface{}, 0)
@@ -790,8 +854,6 @@ func broadcastMessage(msg Message) {
 	// 如果是回复消息，添加回复信息
 	if msg.ReplyToID != nil {
 		msgWithType["reply_to_id"] = *msg.ReplyToID
-		// 从数据库获取被回复消息信息（此时在持有锁的情况下，需要小心处理）
-		// 由于我们持有 RLock，我们只能进行查询操作
 		if msg.ReplyToMsg != nil {
 			msgWithType["reply_to_msg"] = map[string]interface{}{
 				"id":         msg.ReplyToMsg.ID,
@@ -872,8 +934,6 @@ func broadcastWithdraw(targetType, targetID string, messageID int64, sender stri
 		}
 	}
 }
-
-// --- HTTP 业务接口 ---
 
 // 获取消息历史接口
 func handleGetMessages(w http.ResponseWriter, r *http.Request) {
@@ -1051,8 +1111,6 @@ func handleResetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// --- 管理员操作路由 (适配 admin.html 契约) ---
-
 func handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	if !checkAdminSecret(r) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
@@ -1114,7 +1172,6 @@ func handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	target := req["username"]
-	// 强制断开其 websocket
 	stateMutex.Lock()
 	if conn, online := clients[target]; online {
 		_ = conn.WriteJSON(map[string]string{"type": "auth_err", "content": "您的账号已被管理员注销"})
@@ -1123,7 +1180,6 @@ func handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 	stateMutex.Unlock()
 
-	// 从持久层清除一切痕迹
 	_, _ = db.Exec("DELETE FROM users WHERE username = ?", target)
 	_, _ = db.Exec("DELETE FROM friends WHERE username = ? OR friend_username = ?", target, target)
 	_, _ = db.Exec("DELETE FROM group_members WHERE username = ?", target)
