@@ -35,8 +35,54 @@
             animation: fadeInUp 280ms ease-out both;
         }
 
+        .modal-pop {
+            animation: modalPop 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        .overlay-fade {
+            animation: overlayFade 220ms ease-out both;
+        }
+
+        .item-slide-in {
+            opacity: 0;
+            transform: translateY(12px);
+            animation: itemSlideIn 260ms ease-out forwards;
+        }
+
+        .member-owner {
+            background: linear-gradient(135deg, rgba(59,130,246,0.14), rgba(234,179,8,0.12));
+            border-color: rgba(59,130,246,0.35);
+            box-shadow: 0 10px 24px rgba(59,130,246,0.12);
+        }
+
+        .owner-badge {
+            color: #d97706;
+            font-weight: 600;
+        }
+
         .chat-bubble {
             animation: bubbleIn 180ms ease-out both;
+        }
+
+        @keyframes itemSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(12px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes overlayFade {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes modalPop {
+            from { opacity: 0; transform: translateY(12px) scale(0.96); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
         .chat-bubble.pending {
@@ -417,6 +463,22 @@
         </div>
     </div>
 
+    <div id="groupMembersModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0 overlay-fade">
+        <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-96 space-y-4 max-h-[90vh] overflow-y-auto modal-pop">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h3 id="groupMembersModalTitle" class="text-sm font-bold text-slate-800"></h3>
+                    <p class="text-xs text-slate-500">群成员列表</p>
+                </div>
+                <button onclick="toggleGroupMembersModal(false)" class="text-xl text-slate-400 hover:text-slate-600 cursor-pointer">✕</button>
+            </div>
+            <div id="groupMembersModalList" class="space-y-2"></div>
+            <div class="flex justify-end pt-2 border-t border-slate-100">
+                <button onclick="toggleGroupMembersModal(false)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer font-medium">关闭</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 添加好友模态框 -->
     <div id="addFriendModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0">
         <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-80 space-y-4 max-h-[80vh] overflow-y-auto">
@@ -451,8 +513,8 @@
             </div>
 
             <!-- 群主标示 -->
-            <div id="groupOwnerInfo" class="hidden bg-blue-50 p-3 rounded-lg border border-blue-100">
-                <p class="text-xs text-blue-600 font-medium">✓ 你是群主，可以管理此群聊</p>
+            <div id="groupOwnerInfo" class="hidden bg-amber-50 p-3 rounded-lg border border-amber-100">
+                <p class="text-xs owner-badge">✓ 你是群主，可以管理此群聊</p>
             </div>
 
             <!-- 群主操作区域 -->
@@ -2110,8 +2172,11 @@
                         div.className = 'flex items-center justify-between px-2 py-1 rounded bg-white border border-slate-100';
                         div.innerHTML = `
                             <span>${member.username}</span>
-                            <span class="text-[9px] text-slate-400">${member.is_owner ? '群主' : '成员'}</span>
+                            <span class="text-[9px] ${member.is_owner ? 'owner-badge' : 'text-slate-400'}">${member.is_owner ? '群主' : '成员'}</span>
                         `;
+                        if (member.is_owner) {
+                            div.classList.add('member-owner');
+                        }
                         membersList.appendChild(div);
                     });
                     document.getElementById('memberCount').innerText = result.members.length;
@@ -2385,16 +2450,45 @@
                 const data = await response.json();
                 const members = data.members || [];
 
-                let memberList = '📍 群成员列表：\n\n';
-                members.forEach((m, index) => {
-                    const badge = m.is_owner ? ' 👑 (群主)' : '';
-                    memberList += `${index + 1}. ${m.username}${badge}\n`;
-                });
+                const titleEl = document.getElementById('groupMembersModalTitle');
+                const listEl = document.getElementById('groupMembersModalList');
+                titleEl.innerText = `群组：${activeTarget.name || activeTarget.id}`;
+                listEl.innerHTML = '';
 
-                alert(memberList);
+                if (members.length === 0) {
+                    listEl.innerHTML = '<div class="text-slate-500 text-sm">当前群暂无成员</div>';
+                } else {
+                    members.forEach((m, index) => {
+                        const item = document.createElement('div');
+                        item.className = 'flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50 text-sm item-slide-in';
+                        if (m.is_owner) {
+                            item.classList.add('member-owner');
+                        }
+                        item.style.animationDelay = `${index * 70}ms`;
+                        item.innerHTML = `
+                            <div class="space-y-0.5">
+                                <div class="font-medium text-slate-800">${index + 1}. ${m.username}</div>
+                                <div class="text-[11px] ${m.is_owner ? 'owner-badge' : 'text-slate-500'}">${m.is_owner ? '群主' : '普通成员'}</div>
+                            </div>
+                        `;
+                        listEl.appendChild(item);
+                    });
+                }
+
+                toggleGroupMembersModal(true);
             } catch (err) {
                 console.warn('获取群成员失败', err);
                 alert('获取群成员失败');
+            }
+        }
+
+        function toggleGroupMembersModal(show) {
+            const modal = document.getElementById('groupMembersModal');
+            if (!modal) return;
+            if (show) {
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
             }
         }
 
