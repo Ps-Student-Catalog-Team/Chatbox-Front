@@ -11,7 +11,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -71,7 +73,6 @@ func main() {
 
 	http.HandleFunc("/ws", handleWebSocket)
 	http.HandleFunc("/api/upload", handleUpload)
-	// 用户相关接口：获取资料、更新、上传头像/背景
 	http.HandleFunc("/api/user/info", handleUserInfo)
 	http.HandleFunc("/api/user/update", handleUserUpdate)
 	http.HandleFunc("/api/user/avatar", handleUserAvatar)
@@ -92,12 +93,27 @@ func main() {
 
 	port := 40001
 	addr := fmt.Sprintf(":%d", port)
-	ip, isPublic := getLocalIP()
-	displayAddr := fmt.Sprintf("%s:%d", ip, port)
-	if isPublic {
-		displayAddr += "(公网)"
+
+	// 收集所有可用地址并构建显示文本
+	ips := getAllIPs()
+	var displays []string
+	for _, ip := range ips {
+		parsed := net.ParseIP(ip)
+		tag := ""
+		if parsed != nil && isPublicIP(parsed) {
+			tag = "(公网)"
+		}
+		displays = append(displays, fmt.Sprintf("%s:%d%s", ip, port, tag))
 	}
-	fmt.Printf("局域网聊天室已就绪，启动于 %s ...\n", displayAddr)
+	// 控制台输出
+	fmt.Printf("局域网聊天室已就绪，启动于\n")
+	for _, d := range displays {
+		fmt.Printf("  %s\n", d)
+	}
+
+	// 弹出窗口显示（用默认浏览器打开本地 HTML）
+	go showStartupWindow(displays)
+
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatalf("服务器启动失败: %v", err)
 	}
@@ -135,6 +151,197 @@ func getLocalIP() (string, bool) {
 		return privateIP, false
 	}
 	return "127.0.0.1", false
+}
+
+// 获取所有可连接的 IPv4 地址（排除回环）
+func getAllIPs() []string {
+	var res []string
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return []string{"127.0.0.1"}
+	}
+	seen := map[string]bool{}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ip := extractIP(a)
+			if ip == nil || ip.To4() == nil || ip.IsLoopback() {
+				continue
+			}
+			// 过滤掉 IPv4 链接本地地址 169.254.x.x
+			if ip4 := ip.To4(); ip4 != nil {
+				if ip4[0] == 169 && ip4[1] == 254 {
+					continue
+				}
+			}
+			s := ip.String()
+			if !seen[s] {
+				seen[s] = true
+				res = append(res, s)
+			}
+		}
+	}
+	if len(res) == 0 {
+		return []string{"127.0.0.1"}
+	}
+	return res
+}
+
+// 在默认浏览器中打开一个临时 HTML 文件，显示地址列表并为每个字符随机着色
+func showStartupWindow(addrs []string) {
+	osType := runtime.GOOS
+	switch osType {
+	case "windows":
+		// PowerShell 窗口
+		var b strings.Builder
+		b.WriteString("Add-Type -AssemblyName System.Windows.Forms,System.Drawing\n")
+		b.WriteString("$form = New-Object System.Windows.Forms.Form\n")
+		b.WriteString("$form.Text = '局域网聊天室已就绪'\n")
+		b.WriteString("$form.Size = New-Object System.Drawing.Size(600,300)\n")
+		b.WriteString("$form.StartPosition = 'CenterScreen'\n")
+		b.WriteString("$rtb = New-Object System.Windows.Forms.RichTextBox\n")
+		b.WriteString("$rtb.ReadOnly = $true\n")
+		b.WriteString("$rtb.BackColor = [System.Drawing.Color]::FromArgb(17,17,17)\n")
+		b.WriteString("$rtb.ForeColor = [System.Drawing.Color]::White\n")
+		b.WriteString("$rtb.Dock = 'Fill'\n")
+		b.WriteString("$rtb.Font = New-Object System.Drawing.Font('Microsoft YaHei',12)\n")
+		b.WriteString("$rtb.AppendText('局域网聊天室已就绪，启动于')\n")
+		b.WriteString("$rtb.AppendText([char]13 + [char]10)\n")
+		for _, a := range addrs {
+			esc := strings.ReplaceAll(a, "'", "''")
+			b.WriteString(fmt.Sprintf("$addr = '%s'\n", esc))
+			b.WriteString("foreach ($ch in $addr.ToCharArray()) {\n")
+			b.WriteString("  $c = [System.Drawing.Color]::FromArgb((Get-Random -Minimum 0 -Maximum 256),(Get-Random -Minimum 0 -Maximum 256),(Get-Random -Minimum 0 -Maximum 256))\n")
+			b.WriteString("  $rtb.SelectionColor = $c\n")
+			b.WriteString("  $rtb.AppendText($ch)\n")
+			b.WriteString("}\n")
+			b.WriteString("$rtb.AppendText([char]13 + [char]10)\n")
+		}
+		b.WriteString("$form.Controls.Add($rtb)\n")
+		b.WriteString("[void]$form.ShowDialog()\n")
+
+		script := b.String()
+		tmp := filepath.Join(os.TempDir(), "chatbox_startup.ps1")
+		// 写入带 BOM 的 UTF-8 脚本，避免 PowerShell 解码为本地编码导致中文乱码
+		bomPrefixed := append([]byte{0xEF, 0xBB, 0xBF}, []byte(script)...)
+		_ = os.WriteFile(tmp, bomPrefixed, 0644)
+
+		cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", tmp)
+		_ = cmd.Start()
+
+	case "linux":
+		// 优先使用 yad（支持 Pango markup），没有则用 zenity 退回，最后用 xdg-open 打开 HTML
+		if p, _ := exec.LookPath("yad"); p != "" {
+			// 构建 Pango 文本，每字符用 <span foreground='#rrggbb'>c</span>
+			var sb strings.Builder
+			sb.WriteString("<b>局域网聊天室已就绪，启动于</b>\\n")
+			for _, a := range addrs {
+				for _, ch := range a {
+					color := fmt.Sprintf("#%06x", randColor())
+					// 转义 & < >
+					esc := ch
+					if esc == '&' {
+						sb.WriteString("&amp;")
+					} else if esc == '<' {
+						sb.WriteString("&lt;")
+					} else if esc == '>' {
+						sb.WriteString("&gt;")
+					} else {
+						sb.WriteString(fmt.Sprintf("<span foreground='%s'>%s</span>", color, string(esc)))
+					}
+				}
+				sb.WriteString("<br/>")
+			}
+			text := sb.String()
+			// 调用 yad
+			cmd := exec.Command("yad", "--title=局域网聊天室已就绪", "--text", text, "--width=600", "--height=300", "--center", "--no-buttons", "--undecorated=false")
+			_ = cmd.Start()
+			return
+		}
+		if p, _ := exec.LookPath("zenity"); p != "" {
+			// 使用 zenity 显示纯文本（无颜色）
+			var sb strings.Builder
+			sb.WriteString("局域网聊天室已就绪，启动于\\n")
+			for _, a := range addrs {
+				sb.WriteString(a)
+				sb.WriteString("\\n")
+			}
+			cmd := exec.Command("zenity", "--info", "--text", sb.String())
+			_ = cmd.Start()
+			return
+		}
+		// 最后回退：生成临时 HTML 并用 xdg-open 打开
+		var htmlb strings.Builder
+		htmlb.WriteString("<!doctype html><html><meta charset='utf-8'><body style='background:#111;color:#fff;font-family:sans-serif;padding:20px'>")
+		htmlb.WriteString("<h3>局域网聊天室已就绪，启动于</h3><div style='background:#222;padding:12px;border-radius:8px;white-space:pre-wrap'>")
+		for _, a := range addrs {
+			for _, ch := range a {
+				color := fmt.Sprintf("#%06x", randColor())
+				htmlb.WriteString(fmt.Sprintf("<span style='color:%s'>%s</span>", color, htmlEscape(string(ch))))
+			}
+			htmlb.WriteString("<br/>")
+		}
+		htmlb.WriteString("</div></body></html>")
+		tmp := filepath.Join(os.TempDir(), "chatbox_startup.html")
+		_ = os.WriteFile(tmp, []byte(htmlb.String()), 0644)
+		cmd := exec.Command("xdg-open", tmp)
+		_ = cmd.Start()
+
+	case "darwin":
+		// macOS：回退到打开 HTML
+		var htmlb strings.Builder
+		htmlb.WriteString("<!doctype html><html><meta charset='utf-8'><body style='background:#111;color:#fff;font-family:sans-serif;padding:20px'>")
+		htmlb.WriteString("<h3>局域网聊天室已就绪，启动于</h3><div style='background:#222;padding:12px;border-radius:8px;white-space:pre-wrap'>")
+		for _, a := range addrs {
+			for _, ch := range a {
+				color := fmt.Sprintf("#%06x", randColor())
+				htmlb.WriteString(fmt.Sprintf("<span style='color:%s'>%s</span>", color, htmlEscape(string(ch))))
+			}
+			htmlb.WriteString("<br/>")
+		}
+		htmlb.WriteString("</div></body></html>")
+		tmp := filepath.Join(os.TempDir(), "chatbox_startup.html")
+		_ = os.WriteFile(tmp, []byte(htmlb.String()), 0644)
+		cmd := exec.Command("open", tmp)
+		_ = cmd.Start()
+
+	default:
+		// 其他平台回退为打开 HTML
+		var htmlb strings.Builder
+		htmlb.WriteString("<!doctype html><html><meta charset='utf-8'><body style='background:#111;color:#fff;font-family:sans-serif;padding:20px'>")
+		htmlb.WriteString("<h3>局域网聊天室已就绪，启动于</h3><div style='background:#222;padding:12px;border-radius:8px;white-space:pre-wrap'>")
+		for _, a := range addrs {
+			for _, ch := range a {
+				color := fmt.Sprintf("#%06x", randColor())
+				htmlb.WriteString(fmt.Sprintf("<span style='color:%s'>%s</span>", color, htmlEscape(string(ch))))
+			}
+			htmlb.WriteString("<br/>")
+		}
+		htmlb.WriteString("</div></body></html>")
+		tmp := filepath.Join(os.TempDir(), "chatbox_startup.html")
+		_ = os.WriteFile(tmp, []byte(htmlb.String()), 0644)
+		cmd := exec.Command("xdg-open", tmp)
+		_ = cmd.Start()
+	}
+}
+
+// randColor 返回 0..0xFFFFFF 的随机颜色值
+func randColor() int {
+	// 使用时间戳和微小随机性
+	return int(time.Now().UnixNano() & 0xFFFFFF)
+}
+
+func htmlEscape(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	return s
 }
 
 func extractIP(addr net.Addr) net.IP {
