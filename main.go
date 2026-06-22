@@ -94,7 +94,6 @@ func main() {
 	port := 40001
 	addr := fmt.Sprintf(":%d", port)
 
-	// 收集所有可用地址并构建显示文本
 	ips := getAllIPs()
 	var displays []string
 	for _, ip := range ips {
@@ -105,13 +104,11 @@ func main() {
 		}
 		displays = append(displays, fmt.Sprintf("%s:%d%s", ip, port, tag))
 	}
-	// 控制台输出
 	fmt.Printf("局域网聊天室已就绪，启动于\n")
 	for _, d := range displays {
 		fmt.Printf("  %s\n", d)
 	}
 
-	// 弹出窗口显示（用默认浏览器打开本地 HTML）
 	go showStartupWindow(displays)
 
 	if err := http.ListenAndServe(addr, nil); err != nil {
@@ -153,7 +150,6 @@ func getLocalIP() (string, bool) {
 	return "127.0.0.1", false
 }
 
-// 获取所有可连接的 IPv4 地址（排除回环）
 func getAllIPs() []string {
 	var res []string
 	ifaces, err := net.Interfaces()
@@ -174,7 +170,6 @@ func getAllIPs() []string {
 			if ip == nil || ip.To4() == nil || ip.IsLoopback() {
 				continue
 			}
-			// 过滤掉 IPv4 链接本地地址 169.254.x.x
 			if ip4 := ip.To4(); ip4 != nil {
 				if ip4[0] == 169 && ip4[1] == 254 {
 					continue
@@ -193,12 +188,10 @@ func getAllIPs() []string {
 	return res
 }
 
-// 在默认浏览器中打开一个临时 HTML 文件，显示地址列表并为每个字符随机着色
 func showStartupWindow(addrs []string) {
 	osType := runtime.GOOS
 	switch osType {
 	case "windows":
-		// PowerShell 窗口
 		var b strings.Builder
 		b.WriteString("Add-Type -AssemblyName System.Windows.Forms,System.Drawing\n")
 		b.WriteString("$form = New-Object System.Windows.Forms.Form\n")
@@ -228,7 +221,6 @@ func showStartupWindow(addrs []string) {
 
 		script := b.String()
 		tmp := filepath.Join(os.TempDir(), "chatbox_startup.ps1")
-		// 写入带 BOM 的 UTF-8 脚本，避免 PowerShell 解码为本地编码导致中文乱码
 		bomPrefixed := append([]byte{0xEF, 0xBB, 0xBF}, []byte(script)...)
 		_ = os.WriteFile(tmp, bomPrefixed, 0644)
 
@@ -236,15 +228,12 @@ func showStartupWindow(addrs []string) {
 		_ = cmd.Start()
 
 	case "linux":
-		// 优先使用 yad（支持 Pango markup），没有则用 zenity 退回，最后用 xdg-open 打开 HTML
 		if p, _ := exec.LookPath("yad"); p != "" {
-			// 构建 Pango 文本，每字符用 <span foreground='#rrggbb'>c</span>
 			var sb strings.Builder
 			sb.WriteString("<b>局域网聊天室已就绪，启动于</b>\\n")
 			for _, a := range addrs {
 				for _, ch := range a {
 					color := fmt.Sprintf("#%06x", randColor())
-					// 转义 & < >
 					esc := ch
 					if esc == '&' {
 						sb.WriteString("&amp;")
@@ -265,7 +254,6 @@ func showStartupWindow(addrs []string) {
 			return
 		}
 		if p, _ := exec.LookPath("zenity"); p != "" {
-			// 使用 zenity 显示纯文本（无颜色）
 			var sb strings.Builder
 			sb.WriteString("局域网聊天室已就绪，启动于\\n")
 			for _, a := range addrs {
@@ -276,7 +264,6 @@ func showStartupWindow(addrs []string) {
 			_ = cmd.Start()
 			return
 		}
-		// 最后回退：生成临时 HTML 并用 xdg-open 打开
 		var htmlb strings.Builder
 		htmlb.WriteString("<!doctype html><html><meta charset='utf-8'><body style='background:#111;color:#fff;font-family:sans-serif;padding:20px'>")
 		htmlb.WriteString("<h3>局域网聊天室已就绪，启动于</h3><div style='background:#222;padding:12px;border-radius:8px;white-space:pre-wrap'>")
@@ -294,7 +281,6 @@ func showStartupWindow(addrs []string) {
 		_ = cmd.Start()
 
 	case "darwin":
-		// macOS：回退到打开 HTML
 		var htmlb strings.Builder
 		htmlb.WriteString("<!doctype html><html><meta charset='utf-8'><body style='background:#111;color:#fff;font-family:sans-serif;padding:20px'>")
 		htmlb.WriteString("<h3>局域网聊天室已就绪，启动于</h3><div style='background:#222;padding:12px;border-radius:8px;white-space:pre-wrap'>")
@@ -312,7 +298,6 @@ func showStartupWindow(addrs []string) {
 		_ = cmd.Start()
 
 	default:
-		// 其他平台回退为打开 HTML
 		var htmlb strings.Builder
 		htmlb.WriteString("<!doctype html><html><meta charset='utf-8'><body style='background:#111;color:#fff;font-family:sans-serif;padding:20px'>")
 		htmlb.WriteString("<h3>局域网聊天室已就绪，启动于</h3><div style='background:#222;padding:12px;border-radius:8px;white-space:pre-wrap'>")
@@ -331,9 +316,7 @@ func showStartupWindow(addrs []string) {
 	}
 }
 
-// randColor 返回 0..0xFFFFFF 的随机颜色值
 func randColor() int {
-	// 使用时间戳和微小随机性
 	return int(time.Now().UnixNano() & 0xFFFFFF)
 }
 
@@ -683,7 +666,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			// 写入群组（添加owner字段）
+			// 写入群组
 			res, err := db.Exec("INSERT INTO groups (name, owner) VALUES (?, ?)", gName, authenticatedUser)
 			if err != nil {
 				continue

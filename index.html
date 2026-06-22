@@ -282,6 +282,126 @@
             from { opacity: 0; transform: translateY(8px) scale(0.98); }
             to { opacity: 1; transform: translateY(0) scale(1); }
         }
+
+        /* 夜间模式覆盖样式 */
+        body.dark-mode {
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+
+        body.dark-mode .bg-white {
+            background-color: #111827 !important;
+        }
+
+        body.dark-mode .bg-slate-50,
+        body.dark-mode .bg-slate-50\/50,
+        body.dark-mode .bg-slate-100 {
+            background-color: #1e293b !important;
+        }
+
+        body.dark-mode .bg-slate-900,
+        body.dark-mode .bg-slate-800,
+        body.dark-mode .bg-slate-700 {
+            background-color: #0f172a !important;
+        }
+
+        body.dark-mode .text-slate-900,
+        body.dark-mode .text-slate-800,
+        body.dark-mode .text-slate-700,
+        body.dark-mode .text-slate-600,
+        body.dark-mode .text-slate-500,
+        body.dark-mode .text-slate-400 {
+            color: #e2e8f0 !important;
+        }
+
+        body.dark-mode .border-slate-100,
+        body.dark-mode .border-slate-200,
+        body.dark-mode .border-slate-300 {
+            border-color: #334155 !important;
+        }
+
+        body.dark-mode .shadow-[0_1px_2px_rgba\(0,0,0,0\.02\)] {
+            box-shadow: 0 1px 2px rgba(255,255,255,0.08) !important;
+        }
+
+        #themeToggleButton {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 3rem;
+            height: 3rem;
+            border-radius: 9999px;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            background: rgba(248, 250, 252, 0.08);
+            color: #cbd5e1;
+            font-size: 1rem;
+            transition: background-color 160ms ease, transform 160ms ease, border-color 160ms ease;
+            margin-top: auto;
+            margin-bottom: 0.75rem;
+        }
+
+        #themeToggleButton:hover,
+        #themeToggleButton:active {
+            background: rgba(248, 250, 252, 0.16);
+            transform: translateY(-1px);
+        }
+
+        body.dark-mode #themeToggleButton {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(148, 163, 184, 0.25);
+            color: #f8fafc;
+        }
+
+        body.dark-mode .text-blue-600,
+        body.dark-mode button.text-blue-600 {
+            color: #dbeafe !important;
+        }
+
+        body.dark-mode .text-blue-700,
+        body.dark-mode button.text-blue-700 {
+            color: #93c5fd !important;
+        }
+
+        body.dark-mode .text-blue-500,
+        body.dark-mode button.text-blue-500 {
+            color: #bfdbfe !important;
+        }
+
+        body.dark-mode .bg-white,
+        body.dark-mode button.bg-white {
+            background-color: #111827 !important;
+        }
+
+        body.dark-mode .bg-slate-50,
+        body.dark-mode .bg-slate-50\/50,
+        body.dark-mode .bg-slate-100,
+        body.dark-mode .hover\:bg-slate-100:hover {
+            background-color: #1f2937 !important;
+        }
+
+        body.dark-mode .bg-blue-50,
+        body.dark-mode .sidebar-item.bg-blue-50 {
+            background-color: #172b47 !important;
+        }
+
+        body.dark-mode .hover\:bg-blue-50:hover {
+            background-color: #172b47 !important;
+        }
+
+        body.dark-mode .sidebar-item:hover {
+            background-color: #1f2937 !important;
+        }
+
+        body.dark-mode .border-slate-100,
+        body.dark-mode .border-slate-200,
+        body.dark-mode .border-slate-300,
+        body.dark-mode .border-blue-500 {
+            border-color: #334155 !important;
+        }
+
+        body.dark-mode .shadow-[0_1px_2px_rgba\(0,0,0,0\.02\)] {
+            box-shadow: 0 1px 2px rgba(255,255,255,0.08) !important;
+        }
     </style>
 
     <div id="loginPanel" class="bg-white p-6 md:p-8 rounded-2xl shadow-2xl w-full md:w-96 mx-4 md:mx-auto transition-all duration-300 fade-in-up">
@@ -328,6 +448,9 @@
                     📞
                 </button>
             </div>
+            <button id="themeToggleButton" onclick="toggleThemeMode()" title="切换黑夜 / 白天模式">
+                🌙
+            </button>
             <button onclick="logout()" class="p-3 rounded-xl hover:bg-red-950 hover:text-red-400 transition cursor-pointer" title="安全退出">
                 📤
             </button>
@@ -2080,8 +2203,6 @@
             }
         }
 
-        window.addEventListener('DOMContentLoaded', restoreAuthFromStorage);
-
         // 侧边栏展开/收起控制
         function toggleSidebar(show) {
             const sidebar = document.getElementById('sidebarList');
@@ -2636,6 +2757,40 @@
                 });
             }
         }
+
+        const themeModeKey = 'lanchat_theme_mode';
+
+        function setThemeMode(mode) {
+            const root = document.body;
+            const toggle = document.getElementById('themeToggleButton');
+            if (mode === 'dark') {
+                root.classList.add('dark-mode');
+                document.documentElement.style.setProperty('--theme-color', '#0f172a');
+                document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0f172a');
+                if (toggle) toggle.innerText = '☀️';
+            } else {
+                root.classList.remove('dark-mode');
+                document.documentElement.style.removeProperty('--theme-color');
+                document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff');
+                if (toggle) toggle.innerText = '🌙';
+            }
+            localStorage.setItem(themeModeKey, mode);
+        }
+
+        function toggleThemeMode() {
+            const mode = document.body.classList.contains('dark-mode') ? 'light' : 'dark';
+            setThemeMode(mode);
+        }
+
+        function restoreThemeMode() {
+            const saved = localStorage.getItem(themeModeKey) || 'light';
+            setThemeMode(saved);
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            restoreThemeMode();
+            restoreAuthFromStorage();
+        });
 
         // 当页面从不可见切回可见时，展示延迟的新消息条并（可选）重置当前聊天未读
         document.addEventListener('visibilitychange', () => {
