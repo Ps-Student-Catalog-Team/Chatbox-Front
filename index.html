@@ -441,16 +441,21 @@
                     U
                 </div>
                 <input type="file" id="avatarFileInput" accept=".jpg,.jpeg,.png,.gif" class="hidden" onchange="uploadAvatarImage(this)">
-                <button onclick="toggleSidebar(true); switchTab('chats');" id="btnTabChats" class="p-3 rounded-xl transition cursor-pointer text-white bg-slate-800">
-                    💬
-                </button>
-                <button onclick="toggleSidebar(true); switchTab('friends');" id="btnTabFriends" class="p-3 rounded-xl transition cursor-pointer hover:bg-slate-800 hover:text-white">
-                    📞
-                </button>
+                <div class="flex flex-col items-center space-y-4 w-full">
+                    <button onclick="toggleSidebar(true); switchTab('chats');" id="btnTabChats" class="p-3 rounded-xl transition cursor-pointer text-white bg-slate-800">
+                        💬
+                    </button>
+                    <button onclick="toggleSidebar(true); switchTab('friends');" id="btnTabFriends" class="p-3 rounded-xl transition cursor-pointer hover:bg-slate-800 hover:text-white">
+                        📞
+                    </button>
+                    <button onclick="window.location.href='settings.html'" class="p-3 rounded-xl transition cursor-pointer hover:bg-slate-800 hover:text-white" title="设置">
+                        ⚙️
+                    </button>
+                    <button id="themeToggleButton" onclick="toggleThemeMode()" title="切换黑夜 / 白天模式" class="p-3 rounded-xl transition cursor-pointer hover:bg-slate-800 hover:text-white">
+                        🌙
+                    </button>
+                </div>
             </div>
-            <button id="themeToggleButton" onclick="toggleThemeMode()" title="切换黑夜 / 白天模式">
-                🌙
-            </button>
             <button onclick="logout()" class="p-3 rounded-xl hover:bg-red-950 hover:text-red-400 transition cursor-pointer" title="安全退出">
                 📤
             </button>
@@ -531,10 +536,6 @@
                                     <span>🔄</span> 刷新消息
                                 </button>
                             </div>
-                            <hr class="my-1">
-                            <button onclick="openNotificationSettings()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
-                                <span>🔔</span> 提醒设置
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -728,88 +729,6 @@
                 </button>
                 <button onclick="submitAddMembers()" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs cursor-pointer font-medium">
                     邀请
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 通知设置模态框 -->
-    <div id="notificationSettingsModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0">
-        <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-96 space-y-4 max-h-[85vh] overflow-y-auto">
-            <div class="flex items-center justify-between mb-2">
-                <h3 class="text-sm font-bold text-slate-800">消息提醒设置</h3>
-                <button onclick="toggleNotificationSettingsModal(false)" class="text-xl text-slate-400 hover:text-slate-600 cursor-pointer">✕</button>
-            </div>
-
-            <div class="bg-blue-50 border border-blue-200 p-3 rounded-lg">
-                <p class="text-xs text-blue-700">
-                    💡 提示：启用浏览器通知需要您授予权限。第一次启用时会弹出权限申请。
-                </p>
-            </div>
-
-            <div class="space-y-3 border-t border-slate-100 pt-4">
-                <!-- 桌面通知 -->
-                <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                    <div class="flex-1">
-                        <p class="text-sm font-medium text-slate-700">🔔 桌面通知</p>
-                        <p class="text-xs text-slate-500 mt-0.5">在系统通知中显示新消息</p>
-                    </div>
-                    <label class="relative inline-block w-12 h-6">
-                        <input type="checkbox" id="toggleDesktopNotification" onchange="updateNotificationSetting('enableDesktopNotification', this.checked)" class="sr-only">
-                        <div class="w-12 h-6 bg-slate-300 rounded-full transition-colors cursor-pointer" id="desktopNotificationToggle"></div>
-                        <div class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform" id="desktopNotificationToggleCircle"></div>
-                    </label>
-                </div>
-
-                <!-- 提示音 -->
-                <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                    <div class="flex-1">
-                        <p class="text-sm font-medium text-slate-700">🔊 提示音</p>
-                        <p class="text-xs text-slate-500 mt-0.5">新消息时播放提示音</p>
-                    </div>
-                    <label class="relative inline-block w-12 h-6">
-                        <input type="checkbox" id="toggleSound" onchange="updateNotificationSetting('enableSound', this.checked)" class="sr-only">
-                        <div class="w-12 h-6 bg-slate-300 rounded-full transition-colors cursor-pointer" id="soundToggle"></div>
-                        <div class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform" id="soundToggleCircle"></div>
-                    </label>
-                </div>
-
-                <!-- 徽章计数 -->
-                <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                    <div class="flex-1">
-                        <p class="text-sm font-medium text-slate-700">🏷️ 未读徽章</p>
-                        <p class="text-xs text-slate-500 mt-0.5">侧边栏显示未读消息数</p>
-                    </div>
-                    <label class="relative inline-block w-12 h-6">
-                        <input type="checkbox" id="toggleBadge" onchange="updateNotificationSetting('enableBadge', this.checked)" class="sr-only">
-                        <div class="w-12 h-6 bg-slate-300 rounded-full transition-colors cursor-pointer" id="badgeToggle"></div>
-                        <div class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform" id="badgeToggleCircle"></div>
-                    </label>
-                </div>
-
-                <!-- 标题闪烁 -->
-                <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                    <div class="flex-1">
-                        <p class="text-sm font-medium text-slate-700">📌 标题提醒</p>
-                        <p class="text-xs text-slate-500 mt-0.5">浏览器标签页闪烁提醒</p>
-                    </div>
-                    <label class="relative inline-block w-12 h-6">
-                        <input type="checkbox" id="toggleTitleBlink" onchange="updateNotificationSetting('enableTitleBlink', this.checked)" class="sr-only">
-                        <div class="w-12 h-6 bg-slate-300 rounded-full transition-colors cursor-pointer" id="titleBlinkToggle"></div>
-                        <div class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform" id="titleBlinkToggleCircle"></div>
-                    </label>
-                </div>
-            </div>
-
-            <div class="bg-amber-50 border border-amber-200 p-3 rounded-lg">
-                <p class="text-xs text-amber-700">
-                    ℹ️ 通知权限设置已保存到本地。刷新页面后设置仍会保留。
-                </p>
-            </div>
-
-            <div class="flex justify-end pt-2 border-t border-slate-100">
-                <button onclick="toggleNotificationSettingsModal(false)" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer font-medium transition">
-                    关闭
                 </button>
             </div>
         </div>
@@ -1266,6 +1185,14 @@
             else if (type === "group") metaText = "群组讨论，仅群成员可见";
             else metaText = "私聊通道，仅发送双方可见";
             document.getElementById('activeChatMeta').innerText = metaText;
+            const chatMenuBtn = document.getElementById('chatMenuBtn');
+            const chatMenu = document.getElementById('chatMenu');
+            if (type === 'public' && id === 'global') {
+                if (chatMenuBtn) chatMenuBtn.classList.add('hidden');
+                if (chatMenu) chatMenu.classList.add('hidden');
+            } else {
+                if (chatMenuBtn) chatMenuBtn.classList.remove('hidden');
+            }
             const sessionKey = `${type}:${id}`;
             if (!cacheMessages[sessionKey]) cacheMessages[sessionKey] = [];
             
@@ -2679,82 +2606,6 @@
                 } else {
                     alert("连接异常，请稍后重试");
                 }
-            }
-        }
-
-        /**
-         * 打开通知设置模态框
-         */
-        function openNotificationSettings() {
-            toggleNotificationSettingsModal(true);
-            updateNotificationSettingsUI();
-        }
-
-        /**
-         * 切换通知设置模态框
-         */
-        function toggleNotificationSettingsModal(show) {
-            const modal = document.getElementById('notificationSettingsModal');
-            if (show) {
-                modal.classList.remove('hidden');
-            } else {
-                modal.classList.add('hidden');
-            }
-        }
-
-        /**
-         * 更新通知设置UI
-         */
-        function updateNotificationSettingsUI() {
-            const config = NotificationManager.getConfig();
-
-            // 更新复选框状态
-            document.getElementById('toggleDesktopNotification').checked = config.enableDesktopNotification;
-            document.getElementById('toggleSound').checked = config.enableSound;
-            document.getElementById('toggleBadge').checked = config.enableBadge;
-            document.getElementById('toggleTitleBlink').checked = config.enableTitleBlink;
-
-            // 更新切换开关样式
-            updateToggleStyle('desktopNotification');
-            updateToggleStyle('sound');
-            updateToggleStyle('badge');
-            updateToggleStyle('titleBlink');
-        }
-
-        /**
-         * 更新切换开关的样式
-         */
-        function updateToggleStyle(name) {
-            const checkbox = document.getElementById(`toggle${name.charAt(0).toUpperCase() + name.slice(1)}`);
-            const toggle = document.getElementById(`${name}Toggle`);
-            const circle = document.getElementById(`${name}ToggleCircle`);
-
-            if (checkbox.checked) {
-                toggle.style.backgroundColor = '#3b82f6';
-                circle.style.transform = 'translateX(24px)';
-            } else {
-                toggle.style.backgroundColor = '#cbd5e1';
-                circle.style.transform = 'translateX(0)';
-            }
-        }
-
-        /**
-         * 更新通知设置
-         */
-        function updateNotificationSetting(key, value) {
-            NotificationManager.saveSettings({ [key]: value });
-            updateToggleStyle(key.replace('enable', '').toLowerCase());
-            
-            // 如果启用了桌面通知，请求权限
-            if (key === 'enableDesktopNotification' && value) {
-                NotificationManager.requestNotificationPermission().then(granted => {
-                    if (!granted) {
-                        alert('浏览器通知被拒绝。请在浏览器设置中允许通知权限。');
-                        document.getElementById('toggleDesktopNotification').checked = false;
-                        updateToggleStyle('desktopNotification');
-                        NotificationManager.saveSettings({ enableDesktopNotification: false });
-                    }
-                });
             }
         }
 

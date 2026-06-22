@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0, user-scalable=yes">
+    <meta name="theme-color" content="#ffffff">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>设置 | 局域网通讯</title>
+    <script src="./viewport-adapter.js"></script>
+    <script src="./tailwind.browser.js"></script>
+    <script src="./notification.js"></script>
+</head>
+<body class="bg-slate-100 min-h-screen font-sans antialiased text-slate-900">
+    <div class="min-h-screen flex items-center justify-center p-4">
+        <div class="w-full max-w-2xl bg-white rounded-[28px] shadow-2xl border border-slate-200 overflow-hidden">
+            <div class="p-6 md:p-8 space-y-6">
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <h1 class="text-2xl font-bold text-slate-900">用户设置</h1>
+                        <p class="text-sm text-slate-500 mt-1">在此更改账号名、访问密码修改页面，并管理消息提醒。</p>
+                    </div>
+                    <button onclick="goBack()" class="rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition">返回聊天</button>
+                </div>
+
+                <section class="space-y-4 bg-slate-50 p-5 rounded-3xl border border-slate-100">
+                    <div class="flex items-center justify-between gap-4">
+                        <div>
+                            <h2 class="text-lg font-semibold text-slate-900">账户设置</h2>
+                            <p class="text-sm text-slate-500">修改当前登录账号名称。</p>
+                        </div>
+                        <a id="passwordResetLink" href="forgot-password.html" class="text-sm font-semibold text-blue-600 hover:text-blue-700">修改密码</a>
+                    </div>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-500 mb-2">账号名称</label>
+                            <input id="usernameInput" type="text" placeholder="请输入新的账号名称" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition" autocapitalize="off">
+                        </div>
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <p id="accountFeedback" class="text-sm text-slate-500"></p>
+                            <button onclick="saveUsername()" class="inline-flex items-center justify-center rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition">保存账号名称</button>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="space-y-4 bg-slate-50 p-5 rounded-3xl border border-slate-100">
+                    <div>
+                        <h2 class="text-lg font-semibold text-slate-900">消息提醒设置</h2>
+                        <p class="text-sm text-slate-500">在此启用或禁用通知选项，设置会保存在本地。</p>
+                    </div>
+                    <div class="grid gap-4">
+                        <div class="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4">
+                            <div>
+                                <p class="font-medium text-slate-800">🔔 桌面通知</p>
+                                <p class="text-xs text-slate-500 mt-1">在系统通知中显示新消息。</p>
+                            </div>
+                            <label class="relative inline-flex h-7 w-14 items-center rounded-full bg-slate-300 cursor-pointer transition-colors" id="desktopNotificationToggle">
+                                <input id="toggleDesktopNotification" type="checkbox" class="sr-only" onchange="updateNotificationSetting('enableDesktopNotification', this.checked)">
+                                <span id="desktopNotificationCircle" class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transform transition-transform"></span>
+                            </label>
+                        </div>
+                        <div class="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4">
+                            <div>
+                                <p class="font-medium text-slate-800">🔊 提示音</p>
+                                <p class="text-xs text-slate-500 mt-1">收到消息时播放提示音。</p>
+                            </div>
+                            <label class="relative inline-flex h-7 w-14 items-center rounded-full bg-slate-300 cursor-pointer transition-colors" id="soundToggle">
+                                <input id="toggleSound" type="checkbox" class="sr-only" onchange="updateNotificationSetting('enableSound', this.checked)">
+                                <span id="soundCircle" class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transform transition-transform"></span>
+                            </label>
+                        </div>
+                        <div class="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4">
+                            <div>
+                                <p class="font-medium text-slate-800">🏷️ 未读徽章</p>
+                                <p class="text-xs text-slate-500 mt-1">在列表中显示未读消息计数。</p>
+                            </div>
+                            <label class="relative inline-flex h-7 w-14 items-center rounded-full bg-slate-300 cursor-pointer transition-colors" id="badgeToggle">
+                                <input id="toggleBadge" type="checkbox" class="sr-only" onchange="updateNotificationSetting('enableBadge', this.checked)">
+                                <span id="badgeCircle" class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transform transition-transform"></span>
+                            </label>
+                        </div>
+                        <div class="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4">
+                            <div>
+                                <p class="font-medium text-slate-800">📌 标题提醒</p>
+                                <p class="text-xs text-slate-500 mt-1">在浏览器标签页显示未读提醒。</p>
+                            </div>
+                            <label class="relative inline-flex h-7 w-14 items-center rounded-full bg-slate-300 cursor-pointer transition-colors" id="titleBlinkToggle">
+                                <input id="toggleTitleBlink" type="checkbox" class="sr-only" onchange="updateNotificationSetting('enableTitleBlink', this.checked)">
+                                <span id="titleBlinkCircle" class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transform transition-transform"></span>
+                            </label>
+                        </div>
+                    </div>
+                </section>
+
+                <div class="rounded-3xl bg-slate-50 p-4 border border-slate-100 text-sm text-slate-500">
+                    设置将自动保存到本地，刷新后仍然保留。若需要修改密码，请点击“修改密码”。
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const authTokenKey = 'lanchat_auth_token';
+        const authUserKey = 'lanchat_auth_user';
+
+        function showToast(message, isError = false) {
+            const toast = document.createElement('div');
+            toast.innerText = message;
+            toast.className = `fixed bottom-6 left-1/2 z-50 w-auto max-w-xs -translate-x-1/2 rounded-2xl px-4 py-3 text-sm font-medium text-white shadow-lg transition-opacity duration-300 ${isError ? 'bg-red-500' : 'bg-slate-900'}`;
+            toast.style.opacity = '0';
+            document.body.appendChild(toast);
+            requestAnimationFrame(() => {
+                toast.style.opacity = '1';
+            });
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 2600);
+        }
+
+        function goBack() {
+            window.location.href = 'index.html';
+        }
+
+        function getQueryParam(name) {
+            const params = new URLSearchParams(window.location.search);
+            return params.get(name);
+        }
+
+        function updateToggleVisual(toggleName, enabled) {
+            const toggle = document.getElementById(`${toggleName}Toggle`);
+            const circle = document.getElementById(`${toggleName}Circle`);
+            if (!toggle || !circle) return;
+            toggle.style.backgroundColor = enabled ? '#2563eb' : '#cbd5e1';
+            // 计算实际可移动的像素距离，兼容不同缩放与 padding
+            const padding = 6; // 保留一点内边距
+            const currentOffset = circle.offsetLeft || 0;
+            const desiredOffset = Math.max(0, toggle.clientWidth - circle.offsetWidth - padding);
+            const translate = Math.max(0, Math.round(desiredOffset - currentOffset));
+            circle.style.transform = enabled ? `translateX(${translate}px)` : 'translateX(0)';
+        }
+
+        function updateNotificationSettingsUI() {
+            const config = NotificationManager.getConfig();
+            document.getElementById('toggleDesktopNotification').checked = config.enableDesktopNotification;
+            document.getElementById('toggleSound').checked = config.enableSound;
+            document.getElementById('toggleBadge').checked = config.enableBadge;
+            document.getElementById('toggleTitleBlink').checked = config.enableTitleBlink;
+
+            updateToggleVisual('desktopNotification', config.enableDesktopNotification);
+            updateToggleVisual('sound', config.enableSound);
+            updateToggleVisual('badge', config.enableBadge);
+            updateToggleVisual('titleBlink', config.enableTitleBlink);
+        }
+
+        function getToggleName(key) {
+            const name = key.replace(/^enable/, '');
+            return name.charAt(0).toLowerCase() + name.slice(1);
+        }
+
+        function updateNotificationSetting(key, value) {
+            NotificationManager.saveSettings({ [key]: value });
+            updateToggleVisual(getToggleName(key), value);
+            if (key === 'enableDesktopNotification' && value) {
+                NotificationManager.requestNotificationPermission().then(granted => {
+                    if (!granted) {
+                        showToast('浏览器通知权限未授予，请检查浏览器设置。', true);
+                        document.getElementById('toggleDesktopNotification').checked = false;
+                        updateToggleVisual('desktopNotification', false);
+                        NotificationManager.saveSettings({ enableDesktopNotification: false });
+                    }
+                });
+            }
+        }
+
+        async function restoreUserInfo() {
+            const token = localStorage.getItem(authTokenKey);
+            const savedUser = localStorage.getItem(authUserKey);
+
+            if (!token || !savedUser) {
+                window.location.href = 'index.html';
+                return;
+            }
+
+            const usernameInput = document.getElementById('usernameInput');
+            const passwordResetLink = document.getElementById('passwordResetLink');
+            passwordResetLink.href = `forgot-password.html?username=${encodeURIComponent(savedUser)}`;
+
+            usernameInput.value = savedUser;
+
+            try {
+                const res = await fetch(`/api/user/info?username=${encodeURIComponent(savedUser)}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.username) {
+                        usernameInput.value = data.username;
+                    }
+                }
+            } catch (err) {
+                console.warn('无法获取用户信息', err);
+            }
+        }
+
+        // 在窗口尺寸变化时重新计算开关位置
+        function recalcAllToggles() {
+            ['desktopNotification','sound','badge','titleBlink'].forEach(name => {
+                const checkbox = document.getElementById('toggle' + (name.charAt(0).toUpperCase() + name.slice(1)));
+                if (checkbox) updateToggleVisual(name, checkbox.checked);
+            });
+        }
+
+        window.addEventListener('resize', () => {
+            // 防抖
+            clearTimeout(window.__recalcToggleTimer);
+            window.__recalcToggleTimer = setTimeout(recalcAllToggles, 120);
+        });
+
+        async function saveUsername() {
+            const token = localStorage.getItem(authTokenKey);
+            const usernameInput = document.getElementById('usernameInput');
+            const newUsername = usernameInput.value.trim();
+            const currentUser = localStorage.getItem(authUserKey);
+
+            if (!token || !currentUser) {
+                window.location.href = 'index.html';
+                return;
+            }
+            if (!newUsername) {
+                showToast('账号名称不能为空。', true);
+                return;
+            }
+            if (newUsername === currentUser) {
+                showToast('账号名称未发生变化。');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/user/update', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username: newUsername })
+                });
+                if (res.ok) {
+                    localStorage.setItem(authUserKey, newUsername);
+                    showToast('账号名称已更新。');
+                    document.getElementById('accountFeedback').innerText = '保存成功。';
+                    setTimeout(() => {
+                        document.getElementById('accountFeedback').innerText = '';
+                    }, 3000);
+                } else if (res.status === 409) {
+                    showToast('该账号名称已被占用，请更换。', true);
+                } else {
+                    const result = await res.json().catch(() => ({}));
+                    showToast(result.error || '更新账号名称失败。', true);
+                }
+            } catch (err) {
+                console.error(err);
+                showToast('保存失败，请重试。', true);
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            restoreUserInfo();
+            NotificationManager.loadSettings();
+            updateNotificationSettingsUI();
+        });
+    </script>
+</body>
+</html>
