@@ -80,9 +80,8 @@
 
         async function init() {
             const urlParams = new URLSearchParams(window.location.search);
-            const profileUser = urlParams.get('user'); // 要查看的用户名（可选）
+            const profileUser = urlParams.get('user');
 
-            // 使用与 index.html 一致的 key
             const token = localStorage.getItem('lanchat_auth_token');
             const loggedInUser = localStorage.getItem('lanchat_auth_user');
 
@@ -92,7 +91,6 @@
                 return;
             }
 
-            // 编辑模式：当没有传入 profileUser，或 profileUser 与已登录用户相同时，允许编辑
             const editMode = !profileUser || (loggedInUser && profileUser === loggedInUser);
 
             try {
@@ -106,7 +104,7 @@
                     return;
                 }
                 
-                // 统一使用username参数查询，提高兼容性
+                // 使用username参数查询
                 response = await fetch(`/api/user/info?username=${encodeURIComponent(queryUsername)}`, {
                     headers: token ? { 'Authorization': `Bearer ${token}` } : {}
                 });
@@ -127,7 +125,7 @@
                         document.body.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
                     }
 
-                    // 设置头像（使用 div 作为头像容器，支持背景图与首字母）
+                    // 设置头像
                     const avatarEl = document.getElementById('avatarImg');
                     if (user.avatar_url) {
                         avatarEl.style.backgroundImage = `url('${user.avatar_url}')`;
@@ -165,7 +163,7 @@
                 } else {
                     // 不能成功获取用户信息
                     if (profileUser) {
-                        // 如果是在查看他人主页，提供降级展示（只显示用户名首字母），并禁用编辑控件
+                        // 如果是在查看他人主页，只显示用户名首字母，并禁用编辑控件
                         showToast('加载用户信息失败，显示公开信息（如有）', 'error');
                         document.getElementById('username').value = profileUser;
                         originalUsername = profileUser;
@@ -233,7 +231,7 @@
                 return;
             }
 
-            // 检查是否有改动（用户名/签名/头像/背景）
+            // 检查是否有改动
             if (username === originalUsername && signature === originalSignature && !avatarFile && !backgroundFile) {
                 showToast('没有改动', 'error');
                 return;
@@ -284,7 +282,7 @@
                     originalSignature = signature;
                 }
 
-                // 保存头像（如果有新上传的）
+                // 保存头像
                 if (avatarFile) {
                     const formA = new FormData();
                     formA.append('avatar', avatarFile);
@@ -301,7 +299,7 @@
                     avatarFile = null;
                 }
 
-                // 保存背景（如果有新上传的）
+                // 保存背景
                 if (backgroundFile) {
                     const formB = new FormData();
                     formB.append('background', backgroundFile);
@@ -327,7 +325,7 @@
             }
         }
 
-        // 绑定交互控件（脚本在 body 末尾加载，元素已存在）
+        // 绑定交互控件
         document.getElementById('changeBgBtn').addEventListener('click', () => document.getElementById('backgroundInput').click());
         document.getElementById('changeAvatarBtn').addEventListener('click', () => document.getElementById('avatarInput').click());
         document.getElementById('avatarUploadBtn').addEventListener('click', () => document.getElementById('avatarInput').click());
@@ -355,7 +353,7 @@
                 return;
             }
 
-            // 验证文件大小（限制5MB）
+            // 验证文件大小
             if (file.size > 5 * 1024 * 1024) {
                 showToast('图片大小不能超过5MB', 'error');
                 return;
@@ -370,7 +368,6 @@
             };
             reader.readAsDataURL(file);
 
-            // 清空input以便下次选择相同文件
             event.target.value = '';
         }
 
@@ -408,7 +405,6 @@
                 document.getElementById('saveBtn').disabled = true;
             } else {
                 overlay.classList.remove('show');
-                // 恢复根据改动计算的保存按钮状态
                 checkForChanges();
             }
         }

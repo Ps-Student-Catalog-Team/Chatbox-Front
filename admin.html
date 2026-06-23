@@ -183,8 +183,11 @@
 
         function showToast(text, isError = false) {
             const toast = document.getElementById('toast');
-            toast.innerText = text;
-            toast.className = `fixed top-6 left-1/2 z-50 text-white text-xs font-bold px-6 py-3 rounded-full shadow-2xl flex items-center bg-${isError?'red':'green'}-500`;
+            const toastText = document.getElementById('toastText');
+            if (toastText) toastText.innerText = text;
+            // 保留其他 class，只切换背景色
+            toast.classList.remove('bg-gray-900', 'bg-red-500', 'bg-green-500');
+            toast.classList.add(isError ? 'bg-red-500' : 'bg-green-500');
             toast.style.transform = "translate(-50%, 0px)";
             toast.style.opacity = "1";
             setTimeout(() => {
@@ -216,37 +219,7 @@
             return response;
         }
 
-        async function tryAdminLogin() {
-            const secret = document.getElementById('secretInput').value.trim();
-            if (!secret) return showToast("请输入密码！", true);
-            
-            try {
-                const response = await requestAdminUsers(secret);
-                if (!response.ok) throw new Error();
-
-                currentSecret = secret;
-                document.getElementById('loginScreen').classList.add('translate-y-full', 'opacity-0');
-                const dash = document.getElementById('adminDashboard');
-                dash.classList.remove('opacity-0', 'pointer-events-none');
-                
-                showToast("接入成功！");
-                refreshUsers();
-                updateSystemStatus();
-            } catch(e) {
-                if (secret === 'admin666') {
-                    currentSecret = secret;
-                    document.getElementById('loginScreen').classList.add('translate-y-full', 'opacity-0');
-                    const dash = document.getElementById('adminDashboard');
-                    dash.classList.remove('opacity-0', 'pointer-events-none');
-
-                    showToast("接入成功！（本地备份认证）");
-                    refreshUsers();
-                    updateSystemStatus();
-                    return;
-                }
-                showToast("校验未通过！", true);
-            }
-        }
+        // `tryAdminLogin` 使用通用的 `performAdminLogin` 实现（避免重复定义）
 
         function switchTab(tabName) {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));

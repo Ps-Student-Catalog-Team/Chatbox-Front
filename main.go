@@ -1333,6 +1333,7 @@ func handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 
 func handleAdminMessages(w http.ResponseWriter, r *http.Request) {
 	if !checkAdminSecret(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -1358,6 +1359,7 @@ func handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	var req map[string]string
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	if req["secret"] != adminSecret {
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -1384,6 +1386,7 @@ func handleAdminDeleteMessage(w http.ResponseWriter, r *http.Request) {
 	var req map[string]interface{}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	if req["secret"] != adminSecret {
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -1394,6 +1397,7 @@ func handleAdminDeleteMessage(w http.ResponseWriter, r *http.Request) {
 
 func handleAdminStatus(w http.ResponseWriter, r *http.Request) {
 	if !checkAdminSecret(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 	stateMutex.RLock()
@@ -1404,6 +1408,7 @@ func handleAdminStatus(w http.ResponseWriter, r *http.Request) {
 
 func handleAdminToggleMute(w http.ResponseWriter, r *http.Request) {
 	if !checkAdminSecret(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 	stateMutex.Lock()
@@ -1420,6 +1425,7 @@ func handleAdminBroadcast(w http.ResponseWriter, r *http.Request) {
 	var req map[string]string
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	if req["secret"] != adminSecret {
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
