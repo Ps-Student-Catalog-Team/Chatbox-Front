@@ -1,8 +1,9 @@
 # 🌐 Chatbox-Front | 局域网即时通讯系统
 
-`Chatbox-Front` 是一款专为局域网环境打造的轻量级、高性能即时通讯（IM）系统。项目采用 **Go 语言（WebSocket）** 驱动高并发后端，前端具备完备的设备自适应能力，支持私聊、加密群聊及全功能管理后台，非常适合校园网、企业内网等限制外网环境下的部署与技术研究。
+`Chatbox-Front` 是一款专为局域网环境打造的轻量级、高性能即时通讯系统。项目采用由 **Go 语言** 驱动的后端，前端具有完备的自适应能力，支持私聊、群聊及公共聊天，非常适合内网环境。
 
-> 💡 **提示**：本项目亦配有独立的进阶管理端软件：[Chatbox-background](https://github.com/stormsnow2233/Chatbox-background)（需配合本后端核心协同运行）。
+> 💡 **提示**：本项目亦配有独立的进阶管理端软件：[Chatbox-background](https://github.com/stormsnow2233/Chatbox-background)（需配合本后端协同运行）。
+ps:这个软件目前诸多问题，不建议使用
 
 ---
 
@@ -51,30 +52,19 @@ go run main.go
 |--------|------|----------|
 | `main.go` | Backend Core | 系统中枢，集成 SQLite、RESTful API、WebSocket、鉴权、路由、群组管理、管理员指令 |
 | `index.html` | Main UI | 聊天室主界面，支持多端自适应、消息历史缓存、在线人数统计、WebSocket 通信 |
-| `admin.html` | Admin Panel | 内置管理后台，暗色科技风登录，支持用户/消息审查、删除、全局广播、全局禁言 |
+| `admin.html` | Admin Panel | 内置管理后台，支持用户/消息审查、删除、全局广播、全局禁言 |
 | `forgot-password.html` | Account Tool | 账户重置面板，通过后端 API 重置密码 |
 
 ---
 
-## 技术文档
+## 快速开始
 
 | 文档 | 说明 |
 |------|------|
 | [QUICK-START.md](QUICK-START.md) | 5分钟完成上线 |
-| [UPDATE-NOTES.md](UPDATE-NOTES.md) | API 路由设计与 WebSocket 信令协议 |
-| [README-mobile-adapt.md](README-mobile-adapt.md) | 多端视口适配与动画实现 |
-| [LATEST-UPDATES.md](LATEST-UPDATES.md) | 版本迭代历史与功能演进 |
-| [IMPLEMENTATION-CHECKLIST.md](IMPLEMENTATION-CHECKLIST.md) | 核心功能清单与未完事项 |
 
 ---
 
-## 路线图 (Roadmap)
-
-- [x] 基于 Go + SQLite 的轻量级高并发后端
-- [x] 支持多群聊切换及独立会话缓存
-- [x] 响应式前端布局
-
----
 
 ## 参与贡献
 

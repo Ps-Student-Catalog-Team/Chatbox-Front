@@ -11,7 +11,6 @@
     <script src="./tailwind.browser.js"></script>
     <script src="./notification.js"></script>
     <script src="./chatHistory.js"></script>
-    <script src="./ai-chat.js"></script>
     <!-- 根据设备自动加载对应 CSS -->
     <link rel="stylesheet" href="./style-desktop.css" media="(min-width: 768px)">
     <link rel="stylesheet" href="./style-mobile.css" media="(max-width: 767px)">
@@ -36,8 +35,54 @@
             animation: fadeInUp 280ms ease-out both;
         }
 
+        .modal-pop {
+            animation: modalPop 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        .overlay-fade {
+            animation: overlayFade 220ms ease-out both;
+        }
+
+        .item-slide-in {
+            opacity: 0;
+            transform: translateY(12px);
+            animation: itemSlideIn 260ms ease-out forwards;
+        }
+
+        .member-owner {
+            background: linear-gradient(135deg, rgba(59,130,246,0.14), rgba(234,179,8,0.12));
+            border-color: rgba(59,130,246,0.35);
+            box-shadow: 0 10px 24px rgba(59,130,246,0.12);
+        }
+
+        .owner-badge {
+            color: #d97706;
+            font-weight: 600;
+        }
+
         .chat-bubble {
             animation: bubbleIn 180ms ease-out both;
+        }
+
+        @keyframes itemSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(12px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes overlayFade {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes modalPop {
+            from { opacity: 0; transform: translateY(12px) scale(0.96); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
         .chat-bubble.pending {
@@ -54,6 +99,29 @@
         .chat-bubble.own-message:hover {
             transform: translateY(-1px);
             box-shadow: 0 10px 18px rgba(15, 23, 42, 0.14);
+        }
+
+        .reply-info {
+            background: rgba(0, 0, 0, 0.05);
+            border-left: 3px solid #0ea5e9;
+            padding: 0.5rem 0.75rem;
+            margin-bottom: 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            cursor: pointer;
+        }
+
+        .reply-info-sender {
+            color: #0ea5e9;
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+        }
+
+        .reply-info-content {
+            color: #64748b;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .withdraw-option {
@@ -76,6 +144,62 @@
             pointer-events: none;
         }
 
+        .reply-option {
+            position: absolute;
+            left: -76px;
+            top: 50%;
+            transform: translateY(-50%) translateX(-10px);
+            background: #0ea5e9;
+            color: #fff;
+            border: none;
+            border-radius: 999px;
+            padding: 0.45rem 0.85rem;
+            font-size: 0.72rem;
+            line-height: 1;
+            cursor: pointer;
+            box-shadow: 0 16px 30px rgba(15, 23, 42, 0.18);
+            opacity: 0;
+            transition: opacity 160ms ease, transform 160ms ease;
+            z-index: 10;
+            pointer-events: none;
+        }
+        
+        .reply-option.right {
+            left: auto;
+            right: -76px;
+            transform: translateY(-50%) translateX(10px);
+        }
+        
+        .reply-option.right.show {
+            transform: translateY(-50%) translateX(0);
+        }
+        
+        .withdraw-option ~ .reply-option {
+            top: calc(50% + 38px);
+        }
+        
+        .withdraw-option ~ .reply-option.right {
+            top: calc(50% + 38px);
+        }
+
+        .reply-option.show {
+            opacity: 1;
+            transform: translateY(-50%) translateX(0);
+            pointer-events: auto;
+        }
+
+        .reply-option.mobile {
+            left: auto;
+            right: 0;
+            top: auto;
+            bottom: calc(100% - 38px);
+            transform: translateY(-10px);
+        }
+
+        .reply-option.mobile.show {
+            transform: translateY(0);
+        }
+
         .withdraw-option.show {
             opacity: 1;
             transform: translateY(-50%) translateX(0);
@@ -94,8 +218,59 @@
             transform: translateY(0);
         }
 
+        .reply-state-box {
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .reply-state-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .reply-state-label {
+            font-size: 0.75rem;
+            color: #0ea5e9;
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+        }
+
+        .reply-state-text {
+            font-size: 0.875rem;
+            color: #64748b;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .reply-state-cancel {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 1.25rem;
+            padding: 0 0.5rem;
+            line-height: 1;
+            transition: color 150ms ease;
+        }
+
+        .reply-state-cancel:hover {
+            color: #64748b;
+        }
+
         .message-wrapper {
             position: relative;
+        }
+
+        .message-wrapper.target-highlight .chat-bubble {
+            box-shadow: 0 8px 20px rgba(14,165,233,0.12);
+            transition: box-shadow 220ms ease;
         }
 
         @keyframes fadeInUp {
@@ -108,6 +283,7 @@
             to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
+<<<<<<< HEAD
         @keyframes slideInRight {
             from { opacity: 0; transform: translateX(20px); }
             to { opacity: 1; transform: translateX(0); }
@@ -181,6 +357,126 @@
 
         #chatMenu button:hover {
             padding-left: 1.25rem;
+=======
+        /* 夜间模式覆盖样式 */
+        body.dark-mode {
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+
+        body.dark-mode .bg-white {
+            background-color: #111827 !important;
+        }
+
+        body.dark-mode .bg-slate-50,
+        body.dark-mode .bg-slate-50\/50,
+        body.dark-mode .bg-slate-100 {
+            background-color: #1e293b !important;
+        }
+
+        body.dark-mode .bg-slate-900,
+        body.dark-mode .bg-slate-800,
+        body.dark-mode .bg-slate-700 {
+            background-color: #0f172a !important;
+        }
+
+        body.dark-mode .text-slate-900,
+        body.dark-mode .text-slate-800,
+        body.dark-mode .text-slate-700,
+        body.dark-mode .text-slate-600,
+        body.dark-mode .text-slate-500,
+        body.dark-mode .text-slate-400 {
+            color: #e2e8f0 !important;
+        }
+
+        body.dark-mode .border-slate-100,
+        body.dark-mode .border-slate-200,
+        body.dark-mode .border-slate-300 {
+            border-color: #334155 !important;
+        }
+
+        body.dark-mode .shadow-[0_1px_2px_rgba\(0,0,0,0\.02\)] {
+            box-shadow: 0 1px 2px rgba(255,255,255,0.08) !important;
+        }
+
+        #themeToggleButton {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 3rem;
+            height: 3rem;
+            border-radius: 9999px;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            background: rgba(248, 250, 252, 0.08);
+            color: #cbd5e1;
+            font-size: 1rem;
+            transition: background-color 160ms ease, transform 160ms ease, border-color 160ms ease;
+            margin-top: auto;
+            margin-bottom: 0.75rem;
+        }
+
+        #themeToggleButton:hover,
+        #themeToggleButton:active {
+            background: rgba(248, 250, 252, 0.16);
+            transform: translateY(-1px);
+        }
+
+        body.dark-mode #themeToggleButton {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(148, 163, 184, 0.25);
+            color: #f8fafc;
+        }
+
+        body.dark-mode .text-blue-600,
+        body.dark-mode button.text-blue-600 {
+            color: #dbeafe !important;
+        }
+
+        body.dark-mode .text-blue-700,
+        body.dark-mode button.text-blue-700 {
+            color: #93c5fd !important;
+        }
+
+        body.dark-mode .text-blue-500,
+        body.dark-mode button.text-blue-500 {
+            color: #bfdbfe !important;
+        }
+
+        body.dark-mode .bg-white,
+        body.dark-mode button.bg-white {
+            background-color: #111827 !important;
+        }
+
+        body.dark-mode .bg-slate-50,
+        body.dark-mode .bg-slate-50\/50,
+        body.dark-mode .bg-slate-100,
+        body.dark-mode .hover\:bg-slate-100:hover {
+            background-color: #1f2937 !important;
+        }
+
+        body.dark-mode .bg-blue-50,
+        body.dark-mode .sidebar-item.bg-blue-50 {
+            background-color: #172b47 !important;
+        }
+
+        body.dark-mode .hover\:bg-blue-50:hover {
+            background-color: #172b47 !important;
+        }
+
+        body.dark-mode .sidebar-item:hover {
+            background-color: #1f2937 !important;
+        }
+
+        body.dark-mode .border-slate-100,
+        body.dark-mode .border-slate-200,
+        body.dark-mode .border-slate-300,
+        body.dark-mode .border-blue-500 {
+            border-color: #334155 !important;
+        }
+
+        body.dark-mode .shadow-[0_1px_2px_rgba\(0,0,0,0\.02\)] {
+            box-shadow: 0 1px 2px rgba(255,255,255,0.08) !important;
+>>>>>>> f710008016b976d8d5431ea6ef88a851ba5ef74d
         }
     </style>
 
@@ -221,12 +517,20 @@
                     U
                 </div>
                 <input type="file" id="avatarFileInput" accept=".jpg,.jpeg,.png,.gif" class="hidden" onchange="uploadAvatarImage(this)">
-                <button onclick="toggleSidebar(true); switchTab('chats');" id="btnTabChats" class="p-3 rounded-xl transition cursor-pointer text-white bg-slate-800">
-                    💬
-                </button>
-                <button onclick="toggleSidebar(true); switchTab('friends');" id="btnTabFriends" class="p-3 rounded-xl transition cursor-pointer hover:bg-slate-800 hover:text-white">
-                    📞
-                </button>
+                <div class="flex flex-col items-center space-y-4 w-full">
+                    <button onclick="toggleSidebar(true); switchTab('chats');" id="btnTabChats" class="p-3 rounded-xl transition cursor-pointer text-white bg-slate-800">
+                        💬
+                    </button>
+                    <button onclick="toggleSidebar(true); switchTab('friends');" id="btnTabFriends" class="p-3 rounded-xl transition cursor-pointer hover:bg-slate-800 hover:text-white">
+                        📞
+                    </button>
+                    <button onclick="window.location.href='settings.html'" class="p-3 rounded-xl transition cursor-pointer hover:bg-slate-800 hover:text-white" title="设置">
+                        ⚙️
+                    </button>
+                    <button id="themeToggleButton" onclick="toggleThemeMode()" title="切换黑夜 / 白天模式" class="p-3 rounded-xl transition cursor-pointer hover:bg-slate-800 hover:text-white">
+                        🌙
+                    </button>
+                </div>
             </div>
             <button onclick="logout()" class="p-3 rounded-xl hover:bg-red-950 hover:text-red-400 transition cursor-pointer" title="安全退出">
                 📤
@@ -304,6 +608,7 @@
                                     <span>🔄</span> 刷新消息
                                 </button>
                             </div>
+<<<<<<< HEAD
                             <!-- AI 菜单项 -->
                             <div id="aiMenuItems" class="hidden">
                                 <button onclick="clearAIChatHistory()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
@@ -315,6 +620,8 @@
                             <button onclick="openNotificationSettings()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
                                 <span>🔔</span> 提醒设置
                             </button>
+=======
+>>>>>>> f710008016b976d8d5431ea6ef88a851ba5ef74d
                         </div>
                     </div>
                 </div>
@@ -322,22 +629,32 @@
                 <div id="chatBox" class="flex-1 p-3 md:p-6 overflow-y-auto space-y-3 md:space-y-4 bg-slate-50/60 no-scrollbar"></div>
 
                 <div class="p-2 md:p-4 bg-white border-t border-slate-100">
-                    <div class="flex items-center space-x-1 md:space-x-2">
-                        <button onclick="triggerImageUpload()" class="p-1.5 md:p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer font-bold text-lg md:text-xl" title="上传JPG/PNG/GIF图片">
-                            📎
-                        </button>
-                        <input type="file" id="imageFileInput" accept=".jpg,.jpeg,.png,.gif" class="hidden" onchange="uploadFileToServer(this)">
+                    <div id="messageInputArea" class="space-y-2">
+                        <div class="flex items-center space-x-1 md:space-x-2">
+                            <button onclick="triggerImageUpload()" class="p-1.5 md:p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer font-bold text-lg md:text-xl" title="上传JPG/PNG/GIF图片">
+                                📎
+                            </button>
+                            <input type="file" id="imageFileInput" accept=".jpg,.jpeg,.png,.gif" class="hidden" onchange="uploadFileToServer(this)">
 
+<<<<<<< HEAD
                         <div class="flex-1 relative" style="font-family: inherit;">
                             <input type="text" id="messageInput" placeholder="请输入消息..." onkeydown="handleMessageInputKeydown(event)" oninput="updateMentionHighlight()" onscroll="syncHighlightScroll()"
                                    class="w-full px-2 md:px-4 py-1.5 md:py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs md:text-sm bg-slate-50/50 relative z-10" style="position: relative; z-index: 10;">
                             <div id="mentionHighlight" class="absolute top-0 left-0 px-2 md:px-4 py-1.5 md:py-2 text-xs md:text-sm pointer-events-none rounded-xl" style="width: 100%; max-height: 100px; overflow: hidden; font-family: inherit; white-space: pre-wrap; word-wrap: break-word; background: transparent; z-index: 1; line-height: inherit;">
+=======
+                            <div class="flex-1 relative" style="font-family: inherit;">
+                                <input type="text" id="messageInput" placeholder="请输入消息..." onkeydown="handleMessageInputKeydown(event)" oninput="updateMentionHighlight()" onscroll="syncHighlightScroll()"
+                                       class="w-full px-2 md:px-4 py-1.5 md:py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs md:text-sm bg-slate-50/50 relative z-10" style="position: relative; z-index: 10;">
+                                <!-- @提及高亮层 -->
+                                <div id="mentionHighlight" class="absolute top-0 left-0 px-2 md:px-4 py-1.5 md:py-2 text-xs md:text-sm pointer-events-none rounded-xl" style="width: 100%; max-height: 100px; overflow: hidden; font-family: inherit; white-space: pre-wrap; word-wrap: break-word; background: transparent; z-index: 1; line-height: inherit;">
+                                </div>
+>>>>>>> f710008016b976d8d5431ea6ef88a851ba5ef74d
                             </div>
+                            
+                            <button onclick="sendMessage()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 md:px-5 py-1.5 md:py-2 rounded-xl text-xs md:text-sm font-medium transition cursor-pointer shadow-sm">
+                                发送
+                            </button>
                         </div>
-                        
-                        <button onclick="sendMessage()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 md:px-5 py-1.5 md:py-2 rounded-xl text-xs md:text-sm font-medium transition cursor-pointer shadow-sm">
-                            发送
-                        </button>
                     </div>
                 </div>
             </div>
@@ -363,6 +680,22 @@
             <div class="flex justify-end space-x-2 pt-2 border-t border-slate-100">
                 <button onclick="toggleGroupModal(false)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer font-medium button-hover-lift">取消</button>
                 <button onclick="submitCreateGroup()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs cursor-pointer font-medium button-hover-lift">创建群组</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="groupMembersModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0 overlay-fade">
+        <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-96 space-y-4 max-h-[90vh] overflow-y-auto modal-pop">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h3 id="groupMembersModalTitle" class="text-sm font-bold text-slate-800"></h3>
+                    <p class="text-xs text-slate-500">群成员列表</p>
+                </div>
+                <button onclick="toggleGroupMembersModal(false)" class="text-xl text-slate-400 hover:text-slate-600 cursor-pointer">✕</button>
+            </div>
+            <div id="groupMembersModalList" class="space-y-2"></div>
+            <div class="flex justify-end pt-2 border-t border-slate-100">
+                <button onclick="toggleGroupMembersModal(false)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer font-medium">关闭</button>
             </div>
         </div>
     </div>
@@ -401,8 +734,8 @@
             </div>
 
             <!-- 群主标示 -->
-            <div id="groupOwnerInfo" class="hidden bg-blue-50 p-3 rounded-lg border border-blue-100">
-                <p class="text-xs text-blue-600 font-medium">✓ 你是群主，可以管理此群聊</p>
+            <div id="groupOwnerInfo" class="hidden bg-amber-50 p-3 rounded-lg border border-amber-100">
+                <p class="text-xs owner-badge">✓ 你是群主，可以管理此群聊</p>
             </div>
 
             <!-- 群主操作区域 -->
@@ -498,6 +831,7 @@
         </div>
     </div>
 
+<<<<<<< HEAD
     <!-- 通知设置模态框 -->
     <div id="notificationSettingsModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0">
         <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-96 space-y-4 max-h-[85vh] overflow-y-auto modal-appear">
@@ -580,6 +914,8 @@
         </div>
     </div>
 
+=======
+>>>>>>> f710008016b976d8d5431ea6ef88a851ba5ef74d
     <script>
         const authTokenKey = 'lanchat_auth_token';
         const authUserKey = 'lanchat_auth_user';
@@ -590,6 +926,7 @@
         let currentTab = "chats";
         let activeTarget = null;
         let currentAvatar = { type: 'text', text: 'U', color: '#2563eb', url: '' };
+        let replyingTo = null; // 当前要回复的消息
         
         let globalFriends = [];
         let globalGroups = [];
@@ -933,22 +1270,7 @@
                 pubDiv.onclick = () => { selectActiveChat('public', 'global', '公共聊天室'); loadHistoryMessages('public', 'global'); };
                 content.appendChild(pubDiv);
 
-                // ============ 添加 AI 助手项 ============
-                const aiDiv = document.createElement('div');
-                const isAIActive = (activeTarget && activeTarget.type === 'ai');
-                aiDiv.className = `p-2 md:p-3 rounded-xl cursor-pointer transition text-xs md:text-sm flex items-center space-x-2 md:space-x-3 mb-1 sidebar-item ${isAIActive ? 'bg-blue-50 text-blue-700 font-semibold border-l-3 border-blue-500' : 'hover:bg-slate-100 text-slate-700'}`;
-                aiDiv.setAttribute('data-chat-type', 'ai');
-                aiDiv.setAttribute('data-chat-id', 'gemini');
-                aiDiv.innerHTML = `<span class="text-base">🤖</span><span>Gemini 助手</span>`;
-                aiDiv.onclick = () => { 
-                    selectActiveChat('ai', 'gemini', 'Gemini 助手');
-                    if (typeof switchToAIChat === 'function') {
-                        switchToAIChat();
-                    }
-                };
-                content.appendChild(aiDiv);
-
-                const sortedKeys = Object.keys(cacheMessages).filter(key => key !== "public:global" && key !== "ai:gemini");
+                const sortedKeys = Object.keys(cacheMessages).filter(key => key !== "public:global");
                 for (let key of sortedKeys) {
                     const [type, id] = key.split(':');
                     const div = document.createElement('div');
@@ -1041,18 +1363,33 @@
             activeTarget = { type, id, name: displayName };
             document.getElementById('emptyView').classList.add('hidden');
             document.getElementById('activeChatWindow').classList.remove('hidden');
-            document.getElementById('activeChatName').innerHTML = type === 'public' ? '公共聊天室' : type === 'ai' ? 'Gemini 助手' : `${displayName}`;
+            document.getElementById('activeChatName').innerHTML = type === 'public' ? '公共聊天室' : `${displayName}`;
             let metaText = "";
             if (type === "public") metaText = "校内公共聊天室，所有在线成员可见";
             else if (type === "group") metaText = "群组讨论，仅群成员可见";
+<<<<<<< HEAD
             else if (type === "ai") metaText = "AI 对话助手，由 Gemini 驱动";
             else metaText = "私聊，仅发送双方可见";
+=======
+            else metaText = "私聊通道，仅发送双方可见";
+>>>>>>> f710008016b976d8d5431ea6ef88a851ba5ef74d
             document.getElementById('activeChatMeta').innerText = metaText;
+            const chatMenuBtn = document.getElementById('chatMenuBtn');
+            const chatMenu = document.getElementById('chatMenu');
+            if (type === 'public' && id === 'global') {
+                if (chatMenuBtn) chatMenuBtn.classList.add('hidden');
+                if (chatMenu) chatMenu.classList.add('hidden');
+            } else {
+                if (chatMenuBtn) chatMenuBtn.classList.remove('hidden');
+            }
             const sessionKey = `${type}:${id}`;
             if (!cacheMessages[sessionKey]) cacheMessages[sessionKey] = [];
             
             // 清除新消息标记
             clearNewMessageMarks();
+            
+            // 清除回复状态
+            cancelReply();
             
             renderChatBubbles();
             renderSidebarList();
@@ -1209,9 +1546,39 @@
             }
         }
 
+        // 滚动到指定消息（根据 data-message-id）并高亮
+        function scrollToMessage(messageId) {
+            if (!messageId) return;
+            const selector = `[data-message-id="${messageId}"]`;
+            let el = document.querySelector(selector);
+            if (!el) {
+                // 尝试 id 选择器备用
+                el = document.getElementById(`message-${messageId}`);
+            }
+            if (!el) return;
+            try {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } catch (err) {
+                // 回退：调整父容器滚动
+                const box = document.getElementById('chatBox');
+                if (box) {
+                    const rect = el.getBoundingClientRect();
+                    const boxRect = box.getBoundingClientRect();
+                    const offset = rect.top - boxRect.top - (box.clientHeight / 2) + (rect.height / 2);
+                    box.scrollTop += offset;
+                }
+            }
+            // 临时高亮
+            el.classList.add('target-highlight');
+            setTimeout(() => el.classList.remove('target-highlight'), 1800);
+        }
+
         function buildMessageBubble(msg, isMe) {
             const wrapper = document.createElement('div');
             wrapper.className = 'flex flex-col space-y-0.5 md:space-y-1 message-wrapper';
+            if (typeof msg.id !== 'undefined' && msg.id !== null) {
+                wrapper.dataset.messageId = msg.id;
+            }
             if (msg.timestamp) {
                 const timeLabel = document.createElement('span');
                 timeLabel.className = 'text-[8px] md:text-[10px] text-slate-400 px-1';
@@ -1235,6 +1602,29 @@
             if (msg.pending) {
                 bubble.classList.add('pending');
             }
+            
+            // 如果是回复消息，添加被回复消息的预览
+            if (msg.reply_to_msg) {
+                const replyInfo = document.createElement('div');
+                replyInfo.className = 'reply-info';
+                // 点击预览滚动到被引用的消息
+                replyInfo.onclick = (e) => {
+                    e.stopPropagation();
+                    if (msg.reply_to_msg && msg.reply_to_msg.id) {
+                        scrollToMessage(msg.reply_to_msg.id);
+                    }
+                };
+                const replyInfoSender = document.createElement('div');
+                replyInfoSender.className = 'reply-info-sender';
+                replyInfoSender.innerText = `@${msg.reply_to_msg.sender}`;
+                replyInfo.appendChild(replyInfoSender);
+                const replyInfoContent = document.createElement('div');
+                replyInfoContent.className = 'reply-info-content';
+                replyInfoContent.innerText = (msg.reply_to_msg.content || '[图片]').substring(0, 50);
+                replyInfo.appendChild(replyInfoContent);
+                bubble.appendChild(replyInfo);
+            }
+            
             if (msg.content && msg.content.startsWith('/uploads/')) {
                 const img = document.createElement('img');
                 img.src = httpUri + msg.content;
@@ -1267,16 +1657,22 @@
                 });
             }
 
-            if (isMe && !msg.pending) {
-                bubble.classList.add('own-message');
+            if (!msg.pending) {
+                if (isMe) {
+                    bubble.classList.add('own-message');
+                }
                 const isMobile = window.innerWidth < 768;
 
                 let longPressTimer = null;
-                const showOption = () => {
-                    toggleWithdrawOption(wrapper, msg, isMobile);
+                const showOptions = () => {
+                    if (isMe) {
+                        toggleWithdrawOption(wrapper, msg, isMobile);
+                    } else {
+                        toggleReplyOption(wrapper, msg, isMobile, true);  // 别人的消息，回复按钮在右边（已反转）
+                    }
                 };
                 const startLongPress = () => {
-                    longPressTimer = setTimeout(showOption, 600);
+                    longPressTimer = setTimeout(showOptions, 600);
                 };
                 const cancelLongPress = () => {
                     if (longPressTimer) {
@@ -1288,7 +1684,7 @@
                 bubble.addEventListener('click', (e) => {
                     if (!isMobile) {
                         e.stopPropagation();
-                        toggleWithdrawOption(wrapper, msg, false);
+                        showOptions();
                     }
                 });
                 bubble.addEventListener('touchstart', startLongPress);
@@ -1315,6 +1711,13 @@
                 avatar_url: currentAvatar.url || '',
                 pending: true
             };
+            
+            // 如果有回复消息，添加回复信息
+            if (replyingTo) {
+                pendingMsg.reply_to_id = replyingTo.id;
+                pendingMsg.reply_to_msg = replyingTo;
+            }
+            
             cacheMessages[sessionKey].push(pendingMsg);
             renderChatBubbles();
         }
@@ -1335,27 +1738,25 @@
                 return;
             }
             
-            // ============ AI 聊天模式 ============
-            if (activeTarget.type === 'ai') {
-                if (typeof sendMessageToAI === 'function') {
-                    sendMessageToAI(text);
-                    input.value = "";
-                    return;
-                }
-            }
-            
-            // ============ 普通聊天模式 ============
+            // 构建消息负载
             const payload = {
                 action: "msg",
                 target_type: activeTarget.type,
                 target_id: activeTarget.id,
                 content: text
             };
+            
+            // 如果有回复消息，添加回复信息
+            if (replyingTo) {
+                payload.reply_to_id = replyingTo.id;
+            }
+            
             if (ws && ws.readyState === WebSocket.OPEN) {
                 appendPendingMessage(text);
                 try {
                     ws.send(JSON.stringify(payload));
                     input.value = "";
+                    cancelReply();
                 } catch (err) {
                     console.error("消息发送失败：", err);
                     alert("消息发送失败，请检查连接或刷新页面");
@@ -1367,6 +1768,7 @@
 
         function toggleWithdrawOption(wrapper, msg, isMobile) {
             hideWithdrawOptions();
+            hideReplyOptions();
             const existing = wrapper.querySelector('.withdraw-option');
             if (existing) {
                 existing.remove();
@@ -1386,6 +1788,28 @@
             requestAnimationFrame(() => option.classList.add('show'));
             option._hideTimer = setTimeout(() => {
                 hideWithdrawOption(option);
+            }, 4000);
+            
+            // 在撤回按钮右边显示回复按钮
+            const existingReply = wrapper.querySelector('.reply-option');
+            if (existingReply) {
+                existingReply.remove();
+            }
+            const replyOption = document.createElement('button');
+            replyOption.type = 'button';
+            replyOption.className = 'reply-option';  // 自己的消息：将回复按钮显示在左侧（不添加 right 类）
+            if (isMobile) {
+                replyOption.classList.add('mobile');
+            }
+            replyOption.innerText = '回复';
+            replyOption.onclick = (e) => {
+                e.stopPropagation();
+                startReply(msg);
+            };
+            wrapper.appendChild(replyOption);
+            requestAnimationFrame(() => replyOption.classList.add('show'));
+            replyOption._hideTimer = setTimeout(() => {
+                hideReplyOption(replyOption);
             }, 4000);
         }
 
@@ -1420,6 +1844,111 @@
                 target_id: msg.target_id
             }));
             hideWithdrawOptions();
+        }
+
+        function toggleReplyOption(wrapper, msg, isMobile, isOwnMessage = false) {
+            hideReplyOptions();
+            hideWithdrawOptions();
+            const existing = wrapper.querySelector('.reply-option');
+            if (existing) {
+                existing.remove();
+            }
+            const option = document.createElement('button');
+            option.type = 'button';
+            option.className = 'reply-option';
+            if (isMobile) {
+                option.classList.add('mobile');
+            }
+            if (isOwnMessage) {
+                option.classList.add('right');
+            }
+            option.innerText = '回复';
+            option.onclick = (e) => {
+                e.stopPropagation();
+                startReply(msg);
+            };
+            wrapper.appendChild(option);
+            requestAnimationFrame(() => option.classList.add('show'));
+            option._hideTimer = setTimeout(() => {
+                hideReplyOption(option);
+            }, 4000);
+        }
+
+        function hideReplyOption(option) {
+            if (!option) return;
+            clearTimeout(option._hideTimer);
+            option.classList.remove('show');
+            setTimeout(() => {
+                if (option.parentElement) {
+                    option.remove();
+                }
+            }, 200);
+        }
+
+        function hideReplyOptions() {
+            document.querySelectorAll('.reply-option').forEach(option => hideReplyOption(option));
+        }
+
+        function startReply(msg) {
+            replyingTo = msg;
+            showReplyState();
+            const input = document.getElementById('messageInput');
+            if (input) {
+                const mention = `@${msg.sender} `;
+                if (!input.value || !input.value.startsWith(`@${msg.sender}`)) {
+                    input.value = mention + (input.value || '');
+                    // 将光标放到输入末尾
+                    const pos = input.value.length;
+                    try { input.setSelectionRange(pos, pos); } catch (e) {}
+                }
+                input.focus();
+            }
+        }
+
+        function showReplyState() {
+            const container = document.getElementById('messageInputArea');
+            if (!container) return;
+
+            let stateBox = container.querySelector('.reply-state-box');
+            if (!stateBox) {
+                stateBox = document.createElement('div');
+                stateBox.className = 'reply-state-box';
+                container.insertBefore(stateBox, container.firstChild);
+            }
+
+            const content = document.createElement('div');
+            content.className = 'reply-state-content';
+
+            const label = document.createElement('div');
+            label.className = 'reply-state-label';
+            label.innerText = `回复 @${replyingTo.sender}`;
+            content.appendChild(label);
+
+            const text = document.createElement('div');
+            text.className = 'reply-state-text';
+            text.innerText = (replyingTo.content || '[图片]').substring(0, 50);
+            content.appendChild(text);
+
+            stateBox.innerHTML = '';
+            stateBox.appendChild(content);
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = 'reply-state-cancel';
+            cancelBtn.innerHTML = '✕';
+            cancelBtn.onclick = cancelReply;
+            stateBox.appendChild(cancelBtn);
+        }
+
+        function hideReplyState() {
+            const stateBox = document.querySelector('.reply-state-box');
+            if (stateBox) {
+                stateBox.remove();
+            }
+        }
+
+        function cancelReply() {
+            replyingTo = null;
+            hideReplyState();
         }
 
         function removeMessageFromCache(messageId, targetType, targetId) {
@@ -1795,8 +2324,6 @@
             }
         }
 
-        window.addEventListener('DOMContentLoaded', restoreAuthFromStorage);
-
         // 侧边栏展开/收起控制
         function toggleSidebar(show) {
             const sidebar = document.getElementById('sidebarList');
@@ -1887,8 +2414,11 @@
                         div.className = 'flex items-center justify-between px-2 py-1 rounded bg-white border border-slate-100';
                         div.innerHTML = `
                             <span>${member.username}</span>
-                            <span class="text-[9px] text-slate-400">${member.is_owner ? '群主' : '成员'}</span>
+                            <span class="text-[9px] ${member.is_owner ? 'owner-badge' : 'text-slate-400'}">${member.is_owner ? '群主' : '成员'}</span>
                         `;
+                        if (member.is_owner) {
+                            div.classList.add('member-owner');
+                        }
                         membersList.appendChild(div);
                     });
                     document.getElementById('memberCount').innerText = result.members.length;
@@ -2022,7 +2552,6 @@
                     document.getElementById('groupMenuItems').classList.add('hidden');
                     document.getElementById('privateMenuItems').classList.add('hidden');
                     document.getElementById('publicMenuItems').classList.add('hidden');
-                    document.getElementById('aiMenuItems').classList.add('hidden');
                     
                     if (activeTarget.type === 'group') {
                         document.getElementById('groupMenuItems').classList.remove('hidden');
@@ -2030,8 +2559,6 @@
                         document.getElementById('privateMenuItems').classList.remove('hidden');
                     } else if (activeTarget.type === 'public') {
                         document.getElementById('publicMenuItems').classList.remove('hidden');
-                    } else if (activeTarget.type === 'ai') {
-                        document.getElementById('aiMenuItems').classList.remove('hidden');
                     }
                 }
             } else {
@@ -2049,6 +2576,7 @@
                 chatMenu.classList.add('hidden');
             }
             hideWithdrawOptions();
+            hideReplyOptions();
         });
 
         /**
@@ -2164,16 +2692,45 @@
                 const data = await response.json();
                 const members = data.members || [];
 
-                let memberList = '📍 群成员列表：\n\n';
-                members.forEach((m, index) => {
-                    const badge = m.is_owner ? ' 👑 (群主)' : '';
-                    memberList += `${index + 1}. ${m.username}${badge}\n`;
-                });
+                const titleEl = document.getElementById('groupMembersModalTitle');
+                const listEl = document.getElementById('groupMembersModalList');
+                titleEl.innerText = `群组：${activeTarget.name || activeTarget.id}`;
+                listEl.innerHTML = '';
 
-                alert(memberList);
+                if (members.length === 0) {
+                    listEl.innerHTML = '<div class="text-slate-500 text-sm">当前群暂无成员</div>';
+                } else {
+                    members.forEach((m, index) => {
+                        const item = document.createElement('div');
+                        item.className = 'flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50 text-sm item-slide-in';
+                        if (m.is_owner) {
+                            item.classList.add('member-owner');
+                        }
+                        item.style.animationDelay = `${index * 70}ms`;
+                        item.innerHTML = `
+                            <div class="space-y-0.5">
+                                <div class="font-medium text-slate-800">${index + 1}. ${m.username}</div>
+                                <div class="text-[11px] ${m.is_owner ? 'owner-badge' : 'text-slate-500'}">${m.is_owner ? '群主' : '普通成员'}</div>
+                            </div>
+                        `;
+                        listEl.appendChild(item);
+                    });
+                }
+
+                toggleGroupMembersModal(true);
             } catch (err) {
                 console.warn('获取群成员失败', err);
                 alert('获取群成员失败');
+            }
+        }
+
+        function toggleGroupMembersModal(show) {
+            const modal = document.getElementById('groupMembersModal');
+            if (!modal) return;
+            if (show) {
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
             }
         }
 
@@ -2246,81 +2803,39 @@
             }
         }
 
-        /**
-         * 打开通知设置模态框
-         */
-        function openNotificationSettings() {
-            toggleNotificationSettingsModal(true);
-            updateNotificationSettingsUI();
-        }
+        const themeModeKey = 'lanchat_theme_mode';
 
-        /**
-         * 切换通知设置模态框
-         */
-        function toggleNotificationSettingsModal(show) {
-            const modal = document.getElementById('notificationSettingsModal');
-            if (show) {
-                modal.classList.remove('hidden');
+        function setThemeMode(mode) {
+            const root = document.body;
+            const toggle = document.getElementById('themeToggleButton');
+            if (mode === 'dark') {
+                root.classList.add('dark-mode');
+                document.documentElement.style.setProperty('--theme-color', '#0f172a');
+                document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0f172a');
+                if (toggle) toggle.innerText = '☀️';
             } else {
-                modal.classList.add('hidden');
+                root.classList.remove('dark-mode');
+                document.documentElement.style.removeProperty('--theme-color');
+                document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff');
+                if (toggle) toggle.innerText = '🌙';
             }
+            localStorage.setItem(themeModeKey, mode);
         }
 
-        /**
-         * 更新通知设置UI
-         */
-        function updateNotificationSettingsUI() {
-            const config = NotificationManager.getConfig();
-
-            // 更新复选框状态
-            document.getElementById('toggleDesktopNotification').checked = config.enableDesktopNotification;
-            document.getElementById('toggleSound').checked = config.enableSound;
-            document.getElementById('toggleBadge').checked = config.enableBadge;
-            document.getElementById('toggleTitleBlink').checked = config.enableTitleBlink;
-
-            // 更新切换开关样式
-            updateToggleStyle('desktopNotification');
-            updateToggleStyle('sound');
-            updateToggleStyle('badge');
-            updateToggleStyle('titleBlink');
+        function toggleThemeMode() {
+            const mode = document.body.classList.contains('dark-mode') ? 'light' : 'dark';
+            setThemeMode(mode);
         }
 
-        /**
-         * 更新切换开关的样式
-         */
-        function updateToggleStyle(name) {
-            const checkbox = document.getElementById(`toggle${name.charAt(0).toUpperCase() + name.slice(1)}`);
-            const toggle = document.getElementById(`${name}Toggle`);
-            const circle = document.getElementById(`${name}ToggleCircle`);
-
-            if (checkbox.checked) {
-                toggle.style.backgroundColor = '#3b82f6';
-                circle.style.transform = 'translateX(24px)';
-            } else {
-                toggle.style.backgroundColor = '#cbd5e1';
-                circle.style.transform = 'translateX(0)';
-            }
+        function restoreThemeMode() {
+            const saved = localStorage.getItem(themeModeKey) || 'light';
+            setThemeMode(saved);
         }
 
-        /**
-         * 更新通知设置
-         */
-        function updateNotificationSetting(key, value) {
-            NotificationManager.saveSettings({ [key]: value });
-            updateToggleStyle(key.replace('enable', '').toLowerCase());
-            
-            // 如果启用了桌面通知，请求权限
-            if (key === 'enableDesktopNotification' && value) {
-                NotificationManager.requestNotificationPermission().then(granted => {
-                    if (!granted) {
-                        alert('浏览器通知被拒绝。请在浏览器设置中允许通知权限。');
-                        document.getElementById('toggleDesktopNotification').checked = false;
-                        updateToggleStyle('desktopNotification');
-                        NotificationManager.saveSettings({ enableDesktopNotification: false });
-                    }
-                });
-            }
-        }
+        window.addEventListener('DOMContentLoaded', () => {
+            restoreThemeMode();
+            restoreAuthFromStorage();
+        });
 
         // 当页面从不可见切回可见时，展示延迟的新消息条并（可选）重置当前聊天未读
         document.addEventListener('visibilitychange', () => {

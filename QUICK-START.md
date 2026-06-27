@@ -18,6 +18,9 @@ ps：请务必确保有3个html、4个js以及2个css文件在同一目录下
 ### 前端部署
 无需操作，只需要打开浏览器，输入“你的ip+:40001”即可
 
+### ai部署
+当前版本已移除 AI 聊天助手功能。如果需要此功能，可保留原始 `ai-chat.js` 作为单独扩展并自行集成。
+
 ---
 
 ## 🎮 功能演示
@@ -231,14 +234,6 @@ Error: 获取群成员失败
 - 后端需要验证权限
 - 防止越权操作
 
----
-
-## 🔗 相关文档
-
-- [LATEST-UPDATES.md](LATEST-UPDATES.md) - 详细更新说明
-- [UPDATE-NOTES.md](UPDATE-NOTES.md) - 后端API规范
-- [IMPLEMENTATION-CHECKLIST.md](IMPLEMENTATION-CHECKLIST.md) - 实现检查清单
-- [README-mobile-adapt.md](README-mobile-adapt.md) - 移动适配文档
 
 ---
 
