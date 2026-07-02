@@ -438,7 +438,7 @@ func initDB() {
 	_, _ = db.Exec("ALTER TABLE messages ADD COLUMN reply_to_id INTEGER")
 
 	// 扩展状态表（用于持久化扩展开关）
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS extensions (
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS extensions (
 		key TEXT PRIMARY KEY,
 		enabled INTEGER DEFAULT 0
 	);`)
@@ -1326,10 +1326,14 @@ func handleAdminSetExtensions(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+	// preserve body because checkAdminSecret may read it
+	raw, _ := io.ReadAll(r.Body)
+	r.Body = io.NopCloser(bytes.NewReader(raw))
 	if !checkAdminSecret(r) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
+	r.Body = io.NopCloser(bytes.NewReader(raw))
 	var body struct {
 		Key     string `json:"key"`
 		Enabled bool   `json:"enabled"`
@@ -1369,9 +1373,7 @@ func handleAIChat(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "AI 扩展未启用"})
 		return
 	}
-	var body struct {
-		prompt string `json:"prompt"`
-	}
+	// request payload parsed below into generic map
 	// 先以通用解析
 	var payload map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
