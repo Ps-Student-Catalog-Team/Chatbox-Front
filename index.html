@@ -448,6 +448,9 @@
                     <button onclick="toggleSidebar(true); switchTab('friends');" id="btnTabFriends" class="p-3 rounded-xl transition cursor-pointer hover:bg-slate-800 hover:text-white">
                         📞
                     </button>
+                    <button onclick="openExtensionsModal();" id="btnExtensions" class="p-3 rounded-xl transition cursor-pointer hover:bg-slate-800 hover:text-white" title="扩展">
+                        🧩
+                    </button>
                     <button onclick="window.location.href='settings.html'" class="p-3 rounded-xl transition cursor-pointer hover:bg-slate-800 hover:text-white" title="设置">
                         ⚙️
                     </button>
@@ -972,6 +975,13 @@
                         case "publish_announcement_ok":
                             console.log("公告发布成功", data);
                             // 可以在聊天中显示公告信息
+                            break;
+                        case "extensions_update":
+                            if (data && data.extensions) {
+                                window._extensionsCache = data.extensions;
+                                renderExtensionsModal();
+                                updateSidebarExtensions();
+                            }
                             break;
                         case "publish_announcement_err":
                             alert("公告发布失败: " + (data.content || "未知错误"));
@@ -2655,7 +2665,251 @@
                 }
             }
         });
+        
+        // ---- 扩展功能（与 admin.html 同步） ----
+        const availableExtensions = [
+            { key: 'ai_chat', title: 'AI 聊天', short: '基于模型的智能聊天', desc: '启用后可在系统中使用 AI 助手进行对话或代发消息。' },
+            { key: 'secure_ws', title: '加密 Websocks 模式', short: '端到端消息加密的传输模式', desc: '启用后通过约定密钥对消息进行加密，需客户端支持。' }
+        ];
+
+        // 扩展状态缓存与同步
+        window._extensionsCache = {};
+        async function loadExtensionsFromServer() {
+            try {
+                const resp = await fetch('/api/extensions');
+                if (!resp.ok) throw new Error('fetch failed');
+                const data = await resp.json();
+                window._extensionsCache = data || {};
+            } catch (e) {
+                const s = localStorage.getItem('lanchat_extensions');
+                try { window._extensionsCache = s ? JSON.parse(s) : {}; } catch (ee) { window._extensionsCache = {}; }
+            }
+            renderExtensionsModal();
+            updateSidebarExtensions();
+        }
+
+        function getExtensionsState() { return window._extensionsCache || {}; }
+        async function setExtensionState(key, enabled) {
+            // 仅管理员可通过后端切换
+            const secret = localStorage.getItem('lanchat_admin_secret');
+            if (!secret) { alert('仅管理员可切换扩展'); return; }
+            try {
+                const resp = await fetch('/api/admin/extensions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret, key, enabled }) });
+                if (!resp.ok) throw new Error('请求失败');
+                const updated = await resp.json();
+                window._extensionsCache = updated || {};
+                renderExtensionsModal();
+                updateSidebarExtensions();
+            } catch (e) {
+                alert('切换扩展失败');
+            }
+        }
+
+        function openExtensionsModal() {
+            const modal = document.getElementById('extensionsModal');
+            if (!modal) return;
+            modal.classList.remove('hidden');
+            renderExtensionsModal();
+        }
+
+        function closeExtensionsModal() {
+            const modal = document.getElementById('extensionsModal');
+            if (!modal) return;
+            modal.classList.add('hidden');
+        }
+
+        function renderExtensionsModal() {
+            const list = document.getElementById('extModalList');
+            const title = document.getElementById('extModalTitle');
+            const desc = document.getElementById('extModalDesc');
+            const actBtn = document.getElementById('extModalActivate');
+            if (!list) return;
+            const st = getExtensionsState();
+            const isAdmin = !!localStorage.getItem('lanchat_admin_secret');
+            list.innerHTML = '';
+            availableExtensions.forEach(ext => {
+                const row = document.createElement('div');
+                row.className = 'flex items-center justify-between p-3 rounded-lg border border-slate-100 bg-white mb-2';
+                const statusBadge = st[ext.key] ? '<span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">已激活</span>' : '<span class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full">未激活</span>';
+                // 如果不是管理员，禁止在此处激活/切换，仅显示状态和详情按钮
+                if (isAdmin) {
+                    row.innerHTML = `
+                        <div>
+                            <div class="font-medium text-slate-800">${ext.title}</div>
+                            <div class="text-xs text-slate-500">${ext.short}</div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button class="text-xs text-sky-600" onclick="showExtDetail('${ext.key}')">详情</button>
+                            <button class="rounded-full px-3 py-1 text-xs ${st[ext.key] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-700'}" onclick="setExtensionState('${ext.key}', ${!st[ext.key]})">${st[ext.key] ? '已激活' : '未激活'}</button>
+                        </div>
+                    `;
+                } else {
+                    row.innerHTML = `
+                        <div>
+                            <div class="font-medium text-slate-800">${ext.title}</div>
+                            <div class="text-xs text-slate-500">${ext.short}</div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button class="text-xs text-sky-600" onclick="showExtDetail('${ext.key}')">详情</button>
+                            <div>${statusBadge}</div>
+                        </div>
+                    `;
+                }
+                list.appendChild(row);
+            });
+            title.innerText = '请选择扩展';
+            desc.innerText = isAdmin ? '选中扩展查看详情并激活。管理员可在此处开关扩展。' : '扩展由管理员控制，如需启用请联系管理员。';
+            if (actBtn) { if (isAdmin) { actBtn.style.display = 'inline-block'; actBtn.dataset.key = ''; actBtn.innerText = '激活'; } else { actBtn.style.display = 'none'; } }
+            // 同步侧边栏扩展入口显示
+            updateSidebarExtensions();
+        }
+
+        function showExtDetail(key) {
+            const ext = availableExtensions.find(e => e.key === key);
+            if (!ext) return;
+            const title = document.getElementById('extModalTitle');
+            const desc = document.getElementById('extModalDesc');
+            const actBtn = document.getElementById('extModalActivate');
+            const st = getExtensionsState();
+            title.innerText = ext.title;
+            desc.innerText = ext.desc;
+            if (actBtn) { actBtn.dataset.key = key; const enabled = !!st[key]; actBtn.innerText = enabled ? '已激活 - 取消' : '激活'; }
+        }
+
+        function toggleExtActivate() {
+            const actBtn = document.getElementById('extModalActivate');
+            if (!actBtn) return;
+            const key = actBtn.dataset.key;
+            if (!key) return;
+            const st = getExtensionsState();
+            const now = !st[key];
+            setExtensionState(key, now);
+            showToast(now ? '扩展已激活' : '已取消激活');
+        }
+
+        window.addEventListener('storage', (e) => { if (e.key === 'lanchat_extensions') { loadExtensionsFromServer(); } });
+
+        // 侧边栏扩展入口管理（AI 聊天入口示例）
+        function updateSidebarExtensions() {
+            const st = getExtensionsState();
+            const sidebarButtonsContainer = document.querySelector('.flex.flex-col.items-center.space-y-4.w-full');
+            if (!sidebarButtonsContainer) return;
+            const existing = document.getElementById('btnAICHat');
+            if (st.ai_chat) {
+                if (!existing) {
+                    const btn = document.createElement('button');
+                    btn.id = 'btnAICHat';
+                    btn.className = 'p-3 rounded-xl transition cursor-pointer hover:bg-slate-800 hover:text-white';
+                    btn.title = 'AI 聊天';
+                    btn.innerText = '🤖';
+                    btn.onclick = () => { openAIChat(); };
+                    // 插入在扩展按钮之后
+                    const extBtn = document.getElementById('btnExtensions');
+                    if (extBtn && extBtn.parentElement) extBtn.parentElement.insertBefore(btn, extBtn.nextSibling);
+                    else sidebarButtonsContainer.appendChild(btn);
+                }
+            } else {
+                if (existing) existing.remove();
+            }
+        }
+
+        function openAIChat() {
+            const modal = document.getElementById('aiChatModal');
+            if (!modal) return;
+            modal.classList.remove('hidden');
+            // 清空并聚焦输入
+            const win = document.getElementById('aiChatWindow'); if (win) win.innerHTML = '';
+            const input = document.getElementById('aiPromptInput'); if (input) input.focus();
+        }
+
+        function closeAIChat() { const modal = document.getElementById('aiChatModal'); if (modal) modal.classList.add('hidden'); }
+
+        async function sendAIMessage() {
+            const input = document.getElementById('aiPromptInput');
+            const win = document.getElementById('aiChatWindow');
+            if (!input || !win) return;
+            const prompt = input.value.trim();
+            if (!prompt) return;
+            // 本地展示用户消息
+            const userDiv = document.createElement('div'); userDiv.className = 'text-sm text-slate-800 mb-2'; userDiv.innerText = '你：' + prompt; win.appendChild(userDiv);
+            input.value = '';
+            // 调用后端 AI 接口
+            try {
+                const resp = await fetch('/api/ai/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt }) });
+                if (!resp.ok) {
+                    const err = await resp.json().catch(()=>({error:'error'}));
+                    const errDiv = document.createElement('div'); errDiv.className = 'text-sm text-rose-500'; errDiv.innerText = 'AI 未就绪或未启用'; win.appendChild(errDiv);
+                    return;
+                }
+                const data = await resp.json();
+                const botDiv = document.createElement('div'); botDiv.className = 'text-sm text-slate-700 mb-3'; botDiv.innerText = 'AI：' + (data.reply || JSON.stringify(data)); win.appendChild(botDiv);
+                win.scrollTop = win.scrollHeight;
+            } catch (e) {
+                const errDiv = document.createElement('div'); errDiv.className = 'text-sm text-rose-500'; errDiv.innerText = '调用 AI 接口失败'; win.appendChild(errDiv);
+            }
+        }
+
+        // 客户端侧的简易封装：预写 Deepseek/Gemini/Claude 的调用（实际调用后端统一接口）
+        async function callDeepseekJS(prompt) {
+            return callProviderViaBackend('deepseek', prompt);
+        }
+
+        async function callGeminiJS(prompt) {
+            return callProviderViaBackend('gemini', prompt);
+        }
+
+        async function callClaudeJS(prompt) {
+            return callProviderViaBackend('claude', prompt);
+        }
+
+        async function callProviderViaBackend(provider, prompt) {
+            try {
+                const resp = await fetch('/api/ai/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, provider }) });
+                if (!resp.ok) return { error: true };
+                const data = await resp.json();
+                return data;
+            } catch (e) {
+                return { error: true };
+            }
+        }
+
+        // 在页面加载时从后端加载扩展状态并同步侧边栏
+        window.addEventListener('DOMContentLoaded', () => { loadExtensionsFromServer(); });
 
     </script>
+        <!-- 扩展模态 -->
+        <div id="extensionsModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50">
+            <div class="w-full max-w-3xl rounded-2xl bg-white p-6">
+                <div class="flex items-start justify-between">
+                    <div>
+                        <h3 id="extModalTitle" class="text-lg font-bold text-slate-800">扩展</h3>
+                        <p id="extModalDesc" class="text-xs text-slate-500">请选择一个扩展以查看说明并激活</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button id="extModalActivate" data-key="" onclick="toggleExtActivate()" class="rounded-2xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white">激活</button>
+                        <button onclick="closeExtensionsModal()" class="rounded-full px-3 py-2 bg-slate-100">关闭</button>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <div id="extModalList" class="max-h-64 overflow-y-auto"></div>
+                </div>
+            </div>
+        </div>
+        <!-- AI 聊天模态（占位 + 简易对话） -->
+        <div id="aiChatModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50">
+            <div class="w-full max-w-2xl rounded-2xl bg-white p-6">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-bold text-slate-800">AI 聊天</h3>
+                    <button onclick="closeAIChat()" class="rounded-full px-3 py-2 bg-slate-100">关闭</button>
+                </div>
+                <div class="mt-4">
+                    <div id="aiChatWindow" class="h-64 overflow-y-auto border border-slate-100 p-3 rounded-md bg-slate-50 text-sm text-slate-700"></div>
+                    <div class="mt-3 flex gap-2">
+                        <input id="aiPromptInput" type="text" placeholder="向 AI 提问，例如：今天天气如何？" class="flex-1 rounded-2xl border border-slate-200 px-4 py-2 text-sm outline-none">
+                        <button onclick="sendAIMessage()" class="rounded-2xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white">发送</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 </body>
 </html>

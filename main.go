@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -90,6 +91,11 @@ func main() {
 	http.HandleFunc("/api/admin/status", handleAdminStatus)
 	http.HandleFunc("/api/admin/toggle-mute", handleAdminToggleMute)
 	http.HandleFunc("/api/admin/broadcast", handleAdminBroadcast)
+	http.HandleFunc("/api/extensions", handleGetExtensions)
+	http.HandleFunc("/api/admin/extensions", handleAdminSetExtensions)
+	http.HandleFunc("/api/ai/chat", handleAIChat)
+	http.HandleFunc("/api/admin/ai/config", handleAdminSetAIConfig)
+	http.HandleFunc("/api/ai/config", handleGetAIConfig)
 
 	port := 40001
 	addr := fmt.Sprintf(":%d", port)
@@ -430,6 +436,68 @@ func initDB() {
 	_, _ = db.Exec("ALTER TABLE users ADD COLUMN signature TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE users ADD COLUMN background_url TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE messages ADD COLUMN reply_to_id INTEGER")
+
+	// 扩展状态表（用于持久化扩展开关）
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS extensions (
+		key TEXT PRIMARY KEY,
+		enabled INTEGER DEFAULT 0
+	);`)
+	if err != nil {
+		log.Fatalf("创建extensions表失败: %v", err)
+	}
+	// 默认扩展列表与初始值
+	_, _ = db.Exec("INSERT OR IGNORE INTO extensions (key, enabled) VALUES ('ai_chat', 0)")
+	_, _ = db.Exec("INSERT OR IGNORE INTO extensions (key, enabled) VALUES ('secure_ws', 0)")
+	// AI 配置表（保存 provider 与 keys 的 JSON）
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS ai_config (
+		id TEXT PRIMARY KEY,
+		value TEXT
+	);`)
+	if err != nil {
+		log.Fatalf("创建ai_config表失败: %v", err)
+	}
+	// 初始化默认配置
+	_, _ = db.Exec("INSERT OR IGNORE INTO ai_config (id, value) VALUES ('default', '{}')")
+}
+
+// AI 配置操作
+func getAIConfigFromDB() (map[string]interface{}, error) {
+	var raw string
+	err := db.QueryRow("SELECT value FROM ai_config WHERE id = 'default'").Scan(&raw)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return map[string]interface{}{}, nil
+		}
+		return nil, err
+	}
+	var out map[string]interface{}
+	_ = json.Unmarshal([]byte(raw), &out)
+	if out == nil {
+		out = map[string]interface{}{}
+	}
+	return out, nil
+}
+
+func setAIConfigInDB(cfg map[string]interface{}) error {
+	b, _ := json.Marshal(cfg)
+	_, err := db.Exec("INSERT OR REPLACE INTO ai_config (id, value) VALUES ('default', ?)", string(b))
+	if err == nil {
+		broadcastAIConfigUpdate()
+	}
+	return err
+}
+
+func broadcastAIConfigUpdate() {
+	cfg, err := getAIConfigFromDB()
+	if err != nil {
+		return
+	}
+	payload := map[string]interface{}{"type": "ai_config_update", "config": cfg}
+	stateMutex.RLock()
+	defer stateMutex.RUnlock()
+	for _, conn := range clients {
+		_ = conn.WriteJSON(payload)
+	}
 }
 
 func getIP(r *http.Request) string {
@@ -470,6 +538,49 @@ func getTokenFromHeader(r *http.Request) string {
 		return ""
 	}
 	return strings.TrimSpace(parts[1])
+}
+
+// 扩展状态数据库操作
+func getExtensionsFromDB() (map[string]bool, error) {
+	rows, err := db.Query("SELECT key, enabled FROM extensions")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	res := make(map[string]bool)
+	for rows.Next() {
+		var k string
+		var e int
+		_ = rows.Scan(&k, &e)
+		res[k] = e != 0
+	}
+	return res, nil
+}
+
+func setExtensionInDB(key string, enabled bool) error {
+	val := 0
+	if enabled {
+		val = 1
+	}
+	_, err := db.Exec("INSERT OR REPLACE INTO extensions (key, enabled) VALUES (?, ?)", key, val)
+	if err == nil {
+		// 广播给所有在线客户端
+		broadcastExtensionsUpdate()
+	}
+	return err
+}
+
+func broadcastExtensionsUpdate() {
+	st, err := getExtensionsFromDB()
+	if err != nil {
+		return
+	}
+	payload := map[string]interface{}{"type": "extensions_update", "extensions": st}
+	stateMutex.RLock()
+	defer stateMutex.RUnlock()
+	for _, conn := range clients {
+		_ = conn.WriteJSON(payload)
+	}
 }
 
 func checkAdminSecret(r *http.Request) bool {
@@ -1123,6 +1234,216 @@ func broadcastWithdraw(targetType, targetID string, messageID int64, sender stri
 			}
 		}
 	}
+}
+
+// 公共接口：获取扩展状态（允许匿名获取）
+func handleGetExtensions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	st, err := getExtensionsFromDB()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(st)
+}
+
+// 管理接口：设置 AI 配置（provider + keys），需要 secret
+func handleAdminSetAIConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		if !checkAdminSecret(r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		cfg, err := getAIConfigFromDB()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(cfg)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	// 读取请求体并可复用，避免 checkAdminSecret 消耗 Body
+	raw, _ := io.ReadAll(r.Body)
+	r.Body = io.NopCloser(bytes.NewReader(raw))
+	if !checkAdminSecret(r) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	r.Body = io.NopCloser(bytes.NewReader(raw))
+	var body map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	// 仅存储 provider 与 keys
+	cfg := map[string]interface{}{}
+	if p, ok := body["provider"].(string); ok {
+		cfg["provider"] = p
+	}
+	if k, ok := body["keys"].(map[string]interface{}); ok {
+		cfg["keys"] = k
+	}
+	if err := setAIConfigInDB(cfg); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// 公共接口：获取 AI 配置（不返回密钥），允许客户端查看 provider
+func handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	cfg, err := getAIConfigFromDB()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	// 不暴露 keys
+	out := map[string]interface{}{}
+	if p, ok := cfg["provider"]; ok {
+		out["provider"] = p
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
+}
+
+// 管理接口：设置扩展状态（需 secret）
+func handleAdminSetExtensions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if !checkAdminSecret(r) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	var body struct {
+		Key     string `json:"key"`
+		Enabled bool   `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if body.Key == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if err := setExtensionInDB(body.Key, body.Enabled); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	// 返回最新状态
+	st, _ := getExtensionsFromDB()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(st)
+}
+
+// AI 占位聊天接口
+func handleAIChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	// 检查扩展是否启用
+	st, err := getExtensionsFromDB()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if !st["ai_chat"] {
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "AI 扩展未启用"})
+		return
+	}
+	var body struct {
+		prompt string `json:"prompt"`
+	}
+	// 先以通用解析
+	var payload map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	prompt, _ := payload["prompt"].(string)
+	if prompt == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	// 读取 AI 配置并根据 provider 调用对应实现
+	cfg, _ := getAIConfigFromDB()
+	provider, _ := cfg["provider"].(string)
+	keysMap := map[string]string{}
+	if k, ok := cfg["keys"].(map[string]interface{}); ok {
+		for kk, vv := range k {
+			if s, ok2 := vv.(string); ok2 {
+				keysMap[kk] = s
+			}
+		}
+	}
+
+	var reply string
+	var callErr error
+	switch strings.ToLower(provider) {
+	case "deepseek":
+		reply, callErr = callDeepseek(prompt, keysMap)
+	case "gemini":
+		reply, callErr = callGemini(prompt, keysMap)
+	case "claude":
+		reply, callErr = callClaude(prompt, keysMap)
+	default:
+		// 默认占位回复
+		reply = fmt.Sprintf("[AI 占位回复] 我收到了你的问题：%s", prompt)
+	}
+
+	if callErr != nil {
+		// 返回占位并附带错误
+		reply = fmt.Sprintf("[AI 错误] %v — 原始输入：%s", callErr, prompt)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"reply": reply})
+}
+
+// provider implementations (占位或示例实现)
+func callDeepseek(prompt string, keys map[string]string) (string, error) {
+	// 示例: 如果配置了 key，尝试调用 Deepseek API（占位 URL）
+	apiKey := keys["deepseek_key"]
+	if apiKey == "" {
+		return "", fmt.Errorf("Deepseek key 未配置")
+	}
+	// 这里写入实际 API 调用逻辑，下面为占位回显
+	return fmt.Sprintf("[Deepseek] 回复: %s", prompt), nil
+}
+
+func callGemini(prompt string, keys map[string]string) (string, error) {
+	apiKey := keys["gemini_key"]
+	if apiKey == "" {
+		return "", fmt.Errorf("Gemini key 未配置")
+	}
+	// 占位实现
+	return fmt.Sprintf("[Gemini] 回复: %s", prompt), nil
+}
+
+func callClaude(prompt string, keys map[string]string) (string, error) {
+	apiKey := keys["claude_key"]
+	if apiKey == "" {
+		return "", fmt.Errorf("Claude key 未配置")
+	}
+	// 占位实现
+	return fmt.Sprintf("[Claude] 回复: %s", prompt), nil
 }
 
 // 获取消息历史接口
