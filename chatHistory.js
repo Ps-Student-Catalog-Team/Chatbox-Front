@@ -18,10 +18,7 @@ async function loadHistoryMessages(type, id) {
     }
 }
 
-/**
- * 自动加载所有私聊和群聊的历史消息
- * 在用户登录后自动调用，提高首次加载体验
- */
+
 async function loadAllPrivateChatHistory() {
     const loadTasks = [];
     
@@ -76,10 +73,7 @@ function clearPrivateChatHistory() {
     }
 }
 
-/**
- * 处理接收到的消息并路由到对应的聊天窗口
- * @param {object} msg - 接收到的消息对象
- */
+
 function routeIncomingMessage(msg) {
     let sessionKey = "";
     if (msg.target_type === "public") {
