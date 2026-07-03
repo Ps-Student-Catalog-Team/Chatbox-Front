@@ -442,7 +442,7 @@
                     U
                 </div>
                 <input type="file" id="avatarFileInput" accept=".jpg,.jpeg,.png,.gif" class="hidden" onchange="uploadAvatarImage(this)">
-                <div class="flex flex-col items-center space-y-4 w-full">
+                <div id="sidebarExtensionsContainer" class="flex flex-col items-center space-y-4 w-full">
                     <button onclick="toggleSidebar(true); switchTab('chats');" id="btnTabChats" class="p-3 rounded-xl transition cursor-pointer text-white bg-slate-800">
                         💬
                     </button>
@@ -978,7 +978,7 @@
                             if (data && data.extensions) {
                                 window._extensionsCache = data.extensions;
                                 renderExtensionsModal();
-                                updateSidebarExtensions();
+                                AIChat.updateSidebarExtensions();
                             }
                             break;
                         case "ai_config_update":
@@ -2698,7 +2698,7 @@
                 const updated = await resp.json();
                 window._extensionsCache = updated || {};
                 renderExtensionsModal();
-                updateSidebarExtensions();
+                AIChat.updateSidebarExtensions();
             } catch (e) {
                 alert('切换扩展失败');
             }
@@ -2760,7 +2760,7 @@
             desc.innerText = isAdmin ? '选中扩展查看详情并激活。管理员可在此处开关扩展。' : '扩展由管理员控制，如需启用请联系管理员。';
             if (actBtn) { if (isAdmin) { actBtn.style.display = 'inline-block'; actBtn.dataset.key = ''; actBtn.innerText = '激活'; } else { actBtn.style.display = 'none'; } }
             // 同步侧边栏扩展入口显示
-            updateSidebarExtensions();
+            AIChat.updateSidebarExtensions();
         }
 
         function showExtDetail(key) {
@@ -2788,7 +2788,7 @@
 
         window.addEventListener('storage', (e) => { if (e.key === 'lanchat_extensions') { loadExtensionsFromServer(); } });
 
-        // 侧边栏扩展入口管理（AI 聊天入口示例）
+        // 侧边栏扩展入口管理
         // 在页面加载时从后端加载扩展状态并同步侧边栏
         window.addEventListener('DOMContentLoaded', () => { loadExtensionsFromServer(); });
 
@@ -2812,7 +2812,7 @@
                 </div>
             </div>
         </div>
-        <!-- AI 聊天模态（占位 + 简易对话） -->
+        <!-- AI 聊天模态 -->
         <div id="aiChatModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50">
             <div class="w-full max-w-2xl rounded-2xl bg-white p-6">
                 <div class="flex items-center justify-between">

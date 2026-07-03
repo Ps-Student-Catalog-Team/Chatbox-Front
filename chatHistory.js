@@ -39,13 +39,9 @@ async function loadAllPrivateChatHistory() {
     // 并行加载所有消息
     if (loadTasks.length > 0) {
         await Promise.all(loadTasks);
-        console.log(`[聊天记录] 已自动加载 ${globalFriends.length} 个私聊和 ${globalGroups.length} 个群聊的历史消息`);
     }
 }
 
-/**
- * 刷新当前活跃聊天的消息
- */
 function refreshAllMessages() {
     if (!activeTarget) {
         alert("请先选择一个聊天窗口");
@@ -54,10 +50,7 @@ function refreshAllMessages() {
     loadHistoryMessages(activeTarget.type, activeTarget.id);
 }
 
-/**
- * 清空私聊记录
- * 仅清空本地缓存，不影响服务器数据
- */
+
 function clearPrivateChatHistory() {
     if (!activeTarget || activeTarget.type !== 'private') {
         alert("请先选择一个私聊");
