@@ -21,6 +21,17 @@
         .panel-card { animation: fadeUp 220ms ease-out both; }
         @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         #toast { transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        /* 扩展列表与详情交互样式 */
+        .extension-item { cursor: pointer; transition: transform 160ms ease, box-shadow 160ms ease; }
+        .extension-item:hover { transform: translateY(-4px); box-shadow: 0 8px 20px rgba(15,23,42,0.06); }
+        .extension-item.selected { outline: 2px solid rgba(59,130,246,0.12); box-shadow: 0 12px 30px rgba(59,130,246,0.06); }
+        #extensionDetail { transition: opacity 220ms ease, transform 220ms ease; opacity: 0; transform: translateY(8px); }
+        #extensionDetail.show { opacity: 1; transform: translateY(0); }
+    </style>
+    <style>
+        /* custom select styles */
+        .custom-select-trigger:focus { outline: 2px solid rgba(59,130,246,0.12); }
+        .custom-select-options div { user-select: none; }
     </style>
 </head>
 <body class="select-none">
@@ -125,30 +136,76 @@
                         <div id="extensionDetail" class="md:col-span-2">
                             <h4 id="extTitle" class="text-sm font-bold text-slate-900">请选择扩展</h4>
                             <p id="extDesc" class="mt-2 text-xs text-slate-500">选中左侧扩展可查看详细说明并进行激活操作。</p>
-                            <div class="mt-4">
+                                <div class="mt-4">
                                 <button id="activateExtensionBtn" data-key="" onclick="toggleActivateExtension()" class="rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-500">激活</button>
-                                <div class="mt-6 border-t pt-4">
+                                <div id="aiConfigPanel" class="mt-6 border-t pt-4" style="display:none;">
                                     <h5 class="text-sm font-semibold">AI 配置（仅管理员）</h5>
                                     <p class="text-xs text-slate-500 mt-1">选择后端 AI 提供商并配置密钥。密钥仅存储在服务端。</p>
                                     <div class="mt-3 space-y-2">
                                         <label class="text-xs">提供商</label>
-                                        <select id="aiProviderSelect" class="w-full rounded-md border px-3 py-2 text-sm">
-                                            <option value="">（未选择）</option>
-                                            <option value="deepseek">Deepseek</option>
-                                            <option value="gemini">Gemini</option>
-                                            <option value="claude">Claude</option>
-                                        </select>
-                                        <label class="text-xs">Deepseek Key</label>
-                                        <input id="deepseekKeyInput" class="w-full rounded-md border px-3 py-2 text-sm" placeholder="deepseek_key">
-                                        <label class="text-xs">Gemini Key</label>
-                                        <input id="geminiKeyInput" class="w-full rounded-md border px-3 py-2 text-sm" placeholder="gemini_key">
-                                        <label class="text-xs">Claude Key</label>
-                                        <input id="claudeKeyInput" class="w-full rounded-md border px-3 py-2 text-sm" placeholder="claude_key">
+                                        <div class="relative">
+                                            <div id="aiProviderSelect" class="custom-select-trigger w-full rounded-md border px-3 py-2 text-sm bg-white flex items-center justify-between" tabindex="0">（未选择）<span class="ml-2 text-slate-400">▾</span></div>
+                                            <div id="aiProviderOptions" class="custom-select-options hidden absolute left-0 right-0 mt-1 z-50 rounded-md border bg-white shadow-lg">
+                                                <div class="px-3 py-2 hover:bg-slate-50 cursor-pointer" data-value="">（未选择）</div>
+                                                <div class="px-3 py-2 hover:bg-slate-50 cursor-pointer" data-value="deepseek">Deepseek</div>
+                                                <div class="px-3 py-2 hover:bg-slate-50 cursor-pointer" data-value="gemini">Gemini</div>
+                                                <div class="px-3 py-2 hover:bg-slate-50 cursor-pointer" data-value="claude">Claude</div>
+                                            </div>
+                                            <input type="hidden" id="aiProviderValue" value="">
+                                        </div>
+                                        <div id="deepseekFields" style="display:none;">
+                                            <label class="text-xs">Deepseek Key</label>
+                                            <input id="deepseekKeyInput" class="w-full rounded-md border px-3 py-2 text-sm" placeholder="deepseek_key">
+                                            <label class="text-xs">Deepseek 模型</label>
+                                            <select id="deepseekModelInput" class="w-full rounded-md border px-3 py-2 text-sm bg-white">
+                                                <option value="">（默认模型）</option>
+                                                <option value="deepseek-standard">deepseek-standard</option>
+                                                <option value="deepseek-advanced">deepseek-advanced</option>
+                                                <option value="deepseek-chat">deepseek-chat</option>
+                                            </select>
+                                            <p class="text-xs text-slate-400 mt-1">不选择则使用默认模型。</p>
+                                        </div>
+                                        <div id="geminiFields" style="display:none;">
+                                            <label class="text-xs">Gemini Key</label>
+                                            <input id="geminiKeyInput" class="w-full rounded-md border px-3 py-2 text-sm" placeholder="gemini_key">
+                                            <label class="text-xs">Gemini 模型</label>
+                                            <select id="geminiModelInput" class="w-full rounded-md border px-3 py-2 text-sm bg-white">
+                                                <option value="">（默认 text-bison）</option>
+                                                <option value="text-bison">text-bison</option>
+                                                <option value="text-bison-001">text-bison-001</option>
+                                                <option value="text-bison-002">text-bison-002</option>
+                                            </select>
+                                            <p class="text-xs text-slate-400 mt-1">不选择则使用通用 Gemini 端点。</p>
+                                        </div>
+                                        <div id="claudeFields" style="display:none;">
+                                            <label class="text-xs">Claude Key</label>
+                                            <input id="claudeKeyInput" class="w-full rounded-md border px-3 py-2 text-sm" placeholder="claude_key">
+                                            <label class="text-xs">Claude 模型</label>
+                                            <select id="claudeModelInput" class="w-full rounded-md border px-3 py-2 text-sm bg-white">
+                                                <option value="">（默认 Claude 2）</option>
+                                                <option value="claude-2">claude-2</option>
+                                                <option value="claude-3">claude-3</option>
+                                                <option value="claude-instant">claude-instant</option>
+                                            </select>
+                                            <p class="text-xs text-slate-400 mt-1">不选择则使用默认 Claude 端点。</p>
+                                        </div>
                                         <div class="pt-2">
                                             <button onclick="saveAIConfig()" class="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">保存配置</button>
                                             <button onclick="loadAIConfig()" class="ml-2 rounded-2xl bg-slate-100 px-4 py-2 text-sm">载入</button>
                                         </div>
                                     </div>
+                                <div id="secureWSPanel" class="mt-6 border-t pt-4" style="display:none;">
+                                    <h5 class="text-sm font-semibold">Secure WS 密钥（PoC）</h5>
+                                    <p class="text-xs text-slate-500 mt-1">用于 WebSocket 加密的对称密钥（16/24/32 字节）。仅管理员可见。</p>
+                                    <div class="mt-3">
+                                        <label class="text-xs">对称密钥（Base64 或原文）</label>
+                                        <input id="secureWSKeyInput" class="w-full rounded-md border px-3 py-2 text-sm" placeholder="16/24/32 字节对称密钥（可直接粘贴 base64 或原文）">
+                                        <div class="pt-2">
+                                            <button onclick="saveSecureWSKey()" class="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">保存密钥</button>
+                                            <button onclick="loadSecureWSKey()" class="ml-2 rounded-2xl bg-slate-100 px-4 py-2 text-sm">载入</button>
+                                        </div>
+                                    </div>
+                                </div>
                                 </div>
                             </div>
                         </div>
@@ -159,11 +216,11 @@
     </div>
 
     <script>
-        const adminSecretKey = 'lanchat_admin_secret';
-        let currentSecret = '';
+        const adminTokenKey = 'lanchat_admin_token';
+        let currentAdminToken = '';
 
-        function saveAdminSecret(secret) { localStorage.setItem(adminSecretKey, secret); }
-        function clearAdminSecret() { localStorage.removeItem(adminSecretKey); currentSecret = ''; }
+        function saveAdminToken(token) { localStorage.setItem(adminTokenKey, token); }
+        function clearAdminToken() { localStorage.removeItem(adminTokenKey); currentAdminToken = ''; }
 
         function showToast(text, isError = false) {
             const toast = document.getElementById('toast');
@@ -181,15 +238,19 @@
             }, 2200);
         }
 
-        async function requestAdminUsers(secret) {
-            const url = `/api/admin/users?secret=${encodeURIComponent(secret)}`;
-            let response = await fetch(url, { method: 'GET', credentials: 'same-origin' });
-            if (response.ok) return response;
-            response = await fetch('/api/admin/users', {
+        async function requestAdminUsers(token) {
+            const url = `/api/admin/users`;
+            try {
+                const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+                let response = await fetch(url, { method: 'GET', credentials: 'same-origin', headers });
+                if (response.ok) return response;
+            } catch (e) {}
+            // fallback to POST with admin_token in body
+            const response = await fetch('/api/admin/users', {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ secret })
+                body: JSON.stringify({ admin_token: token })
             });
             return response;
         }
@@ -197,10 +258,12 @@
         async function performAdminLogin(secret, silent = false) {
             if (!secret) { if (!silent) showToast('请输入密码', true); return; }
             try {
-                const response = await requestAdminUsers(secret);
-                if (!response.ok) throw new Error();
-                currentSecret = secret;
-                saveAdminSecret(secret);
+                const resp = await fetch('/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'admin', password: secret }) });
+                if (!resp.ok) throw new Error('登录失败');
+                const data = await resp.json();
+                if (!data.token) throw new Error('未返回 token');
+                currentAdminToken = data.token;
+                saveAdminToken(currentAdminToken);
                 document.getElementById('loginScreen').classList.add('hidden');
                 document.getElementById('adminDashboard').classList.remove('hidden');
                 moveTabIndicator('users');
@@ -208,25 +271,33 @@
                 refreshUsers();
                 loadExtensionsFromServer();
             } catch (e) {
-                if (secret === 'admin666') {
-                    currentSecret = secret;
-                    saveAdminSecret(secret);
-                    document.getElementById('loginScreen').classList.add('hidden');
-                    document.getElementById('adminDashboard').classList.remove('hidden');
-                    moveTabIndicator('users');
-                    showToast('接入成功（本地备份认证）');
-                    refreshUsers();
-                    loadExtensionsFromServer();
-                    return;
-                }
                 if (!silent) showToast('校验未通过', true);
-                clearAdminSecret();
+                clearAdminToken();
             }
         }
 
         async function tryAdminLogin() { const secret = document.getElementById('secretInput').value.trim(); await performAdminLogin(secret); }
-        function logoutAdmin() { clearAdminSecret(); document.getElementById('secretInput').value = ''; document.getElementById('adminDashboard').classList.add('hidden'); document.getElementById('loginScreen').classList.remove('hidden'); showToast('已退出管理员会话'); }
-        async function restoreAdminLogin() { const saved = localStorage.getItem(adminSecretKey); if (!saved) return; document.getElementById('secretInput').value = saved; await performAdminLogin(saved, true); }
+        function logoutAdmin() { clearAdminToken(); document.getElementById('secretInput').value = ''; document.getElementById('adminDashboard').classList.add('hidden'); document.getElementById('loginScreen').classList.remove('hidden'); showToast('已退出管理员会话'); }
+        async function restoreAdminLogin() {
+            const saved = localStorage.getItem(adminTokenKey);
+            if (!saved) return;
+            currentAdminToken = saved;
+            document.getElementById('secretInput').value = '***';
+            // 验证 token 是否有效
+            try {
+                const resp = await requestAdminUsers(currentAdminToken);
+                if (resp && resp.ok) {
+                    document.getElementById('loginScreen').classList.add('hidden');
+                    document.getElementById('adminDashboard').classList.remove('hidden');
+                    moveTabIndicator('users');
+                    showToast('恢复管理员会话');
+                    refreshUsers();
+                    loadExtensionsFromServer();
+                    return;
+                }
+            } catch (e) {}
+            clearAdminToken();
+        }
 
         function moveTabIndicator(tabName) {
             const indicator = document.getElementById('tabIndicator');
@@ -257,9 +328,9 @@
         }
 
         async function refreshUsers() {
-            if (!currentSecret) return;
+            if (!currentAdminToken) return;
             try {
-                const response = await fetch(`/api/admin/users?secret=${encodeURIComponent(currentSecret)}`);
+                const response = await fetch(`/api/admin/users`, { headers: { 'Authorization': 'Bearer ' + currentAdminToken } });
                 const data = await response.json();
                 const tbody = document.getElementById('userTableBody');
                 if (!Array.isArray(data) || data.length === 0) {
@@ -280,7 +351,7 @@
         async function banUser(name) {
             if (!confirm(`确认删除用户 ${name} 吗？`)) return;
             try {
-                const response = await fetch('/api/admin/delete-user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret: currentSecret, username: name }) });
+                const response = await fetch('/api/admin/delete-user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ admin_token: currentAdminToken, username: name }) });
                 if (!response.ok) throw new Error();
                 showToast(`已删除用户 ${name}`);
                 refreshUsers();
@@ -288,9 +359,9 @@
         }
 
         async function refreshMessages() {
-            if (!currentSecret) return;
+            if (!currentAdminToken) return;
             try {
-                const response = await fetch(`/api/admin/messages?secret=${encodeURIComponent(currentSecret)}`);
+                const response = await fetch(`/api/admin/messages`, { headers: { 'Authorization': 'Bearer ' + currentAdminToken } });
                 const data = await response.json();
                 const container = document.getElementById('messageStreamBody');
                 if (!Array.isArray(data) || data.length === 0) { container.innerHTML = '<div class="p-8 text-center text-slate-400">当前暂无消息</div>'; return; }
@@ -308,7 +379,7 @@
 
         async function deleteMsg(id) {
             try {
-                const response = await fetch('/api/admin/delete-message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret: currentSecret, id }) });
+                const response = await fetch('/api/admin/delete-message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ admin_token: currentAdminToken, id }) });
                 if (!response.ok) throw new Error();
                 showToast('消息已撤回');
                 refreshMessages();
@@ -316,12 +387,12 @@
         }
 
         async function sendSystemBroadcast() {
-            if (!currentSecret) return;
+            if (!currentAdminToken) return;
             const input = document.getElementById('broadcastInput');
             const txt = input.value.trim();
             if (!txt) { showToast('请输入广播内容', true); return; }
             try {
-                const response = await fetch('/api/admin/broadcast', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret: currentSecret, content: txt }) });
+                const response = await fetch('/api/admin/broadcast', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ admin_token: currentAdminToken, content: txt }) });
                 if (!response.ok) throw new Error();
                 showToast('公告发送成功');
                 input.value = '';
@@ -352,45 +423,55 @@
                 try { _extensionsCache = s ? JSON.parse(s) : {}; } catch (ee) { _extensionsCache = {}; }
             }
             renderExtensionsList();
-            renderExtensionDetail(currentSelectedExtension);
+            if (currentSelectedExtension) showExtensionDetail(currentSelectedExtension);
         }
 
         async function setExtensionState(key, enabled) {
-            // 管理端必须已登录（currentSecret）
-            if (!currentSecret) { showToast('请先登录管理员', true); return; }
+            // 管理端必须已登录（currentAdminToken）
+            if (!currentAdminToken) { showToast('请先登录管理员', true); return; }
             try {
-                const resp = await fetch('/api/admin/extensions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret: currentSecret, key, enabled }) });
+                const resp = await fetch('/api/admin/extensions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ admin_token: currentAdminToken, key, enabled }) });
                 if (!resp.ok) throw new Error('请求失败');
                 const updated = await resp.json();
                 _extensionsCache = updated || {};
                 renderExtensionsList();
-                renderExtensionDetail(currentSelectedExtension);
+                if (currentSelectedExtension) showExtensionDetail(currentSelectedExtension);
             } catch (e) {
                 showToast('更新扩展状态失败', true);
             }
         }
 
         async function loadAIConfig() {
-            if (!currentSecret) { showToast('请先登录管理员', true); return; }
+            if (!currentAdminToken) { showToast('请先登录管理员', true); return; }
             try {
-                const resp = await fetch(`/api/admin/ai/config?secret=${encodeURIComponent(currentSecret)}`);
+                const resp = await fetch(`/api/admin/ai/config`, { headers: { 'Authorization': 'Bearer ' + currentAdminToken } });
                 if (!resp.ok) throw new Error('failed');
                 const cfg = await resp.json();
-                document.getElementById('aiProviderSelect').value = cfg.provider || '';
+                setProvider(cfg.provider || '');
+                const keys = cfg.keys || {};
+                document.getElementById('deepseekKeyInput').value = keys.deepseek_key || '';
+                document.getElementById('deepseekModelInput').value = keys.deepseek_model || '';
+                document.getElementById('geminiKeyInput').value = keys.gemini_key || '';
+                document.getElementById('geminiModelInput').value = keys.gemini_model || '';
+                document.getElementById('claudeKeyInput').value = keys.claude_key || '';
+                document.getElementById('claudeModelInput').value = keys.claude_model || '';
                 showToast('已载入配置');
             } catch (e) { showToast('载入 AI 配置失败', true); }
         }
 
         async function saveAIConfig() {
-            if (!currentSecret) { showToast('请先登录管理员', true); return; }
-            const provider = document.getElementById('aiProviderSelect').value;
+            if (!currentAdminToken) { showToast('请先登录管理员', true); return; }
+            const provider = getProvider();
             const keys = {
                 deepseek_key: document.getElementById('deepseekKeyInput').value.trim(),
+                deepseek_model: document.getElementById('deepseekModelInput').value,
                 gemini_key: document.getElementById('geminiKeyInput').value.trim(),
+                gemini_model: document.getElementById('geminiModelInput').value,
                 claude_key: document.getElementById('claudeKeyInput').value.trim(),
+                claude_model: document.getElementById('claudeModelInput').value,
             };
             try {
-                const resp = await fetch(`/api/admin/ai/config?secret=${encodeURIComponent(currentSecret)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider, keys }) });
+                const resp = await fetch(`/api/admin/ai/config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ admin_token: currentAdminToken, provider, keys }) });
                 if (!resp.ok) throw new Error('save failed');
                 showToast('AI 配置已保存');
             } catch (e) { showToast('保存 AI 配置失败', true); }
@@ -403,7 +484,8 @@
             container.innerHTML = '';
             availableExtensions.forEach(ext => {
                 const item = document.createElement('div');
-                item.className = 'flex items-center justify-between p-3 rounded-lg border border-slate-100 bg-white';
+                item.className = 'flex items-center justify-between p-3 rounded-lg border border-slate-100 bg-white extension-item';
+                item.dataset.key = ext.key;
                 item.innerHTML = `
                     <div>
                         <div class="font-medium text-slate-800">${ext.title}</div>
@@ -414,6 +496,14 @@
                         <button class="rounded-full px-3 py-1 text-xs ${st[ext.key] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-700'}" onclick="setExtensionState('${ext.key}', ${!st[ext.key]})">${st[ext.key] ? '已激活' : '未激活'}</button>
                     </div>
                 `;
+                // 点击整行显示详情（但点击按钮时不触发）
+                item.addEventListener('click', function(e){
+                    const tg = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+                    if (tg === 'button' || tg === 'svg' || tg === 'path') return;
+                    showExtensionDetail(ext.key);
+                });
+                // 标记已选项
+                if (currentSelectedExtension === ext.key) item.classList.add('selected');
                 container.appendChild(item);
             });
         }
@@ -432,6 +522,34 @@
             const enabled = !!st[key];
             actBtn.innerText = enabled ? '已激活 - 取消' : '激活';
             actBtn.className = enabled ? 'rounded-2xl bg-rose-500 px-4 py-3 text-sm font-semibold text-white' : 'rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white';
+            // 视觉选中状态
+            currentSelectedExtension = key;
+            const listItems = document.querySelectorAll('#extensionsList .extension-item');
+            listItems.forEach(li => { if (li.dataset.key === key) li.classList.add('selected'); else li.classList.remove('selected'); });
+            // 详情面板动画显示
+            const detail = document.getElementById('extensionDetail');
+            if (detail) {
+                detail.classList.remove('show');
+                // allow reflow then add show for transition
+                requestAnimationFrame(() => { detail.classList.add('show'); });
+            }
+            // 控制 AI 配置面板是否显示（仅 ai_chat）
+            const aiPanel = document.getElementById('aiConfigPanel');
+            const securePanel = document.getElementById('secureWSPanel');
+            if (aiPanel) {
+                if (key === 'ai_chat') {
+                    aiPanel.style.display = '';
+                } else {
+                    aiPanel.style.display = 'none';
+                }
+            }
+            if (securePanel) {
+                if (key === 'secure_ws') {
+                    securePanel.style.display = '';
+                } else {
+                    securePanel.style.display = 'none';
+                }
+            }
         }
 
         function toggleActivateExtension() {
@@ -450,6 +568,7 @@
             restoreAdminLogin();
             // 加载后端扩展状态
             loadExtensionsFromServer();
+            initProviderDropdown();
             window.addEventListener('resize', () => {
                 const activeTab = document.querySelector('.tab-btn.active');
                 if (activeTab) {
@@ -465,6 +584,62 @@
                 }
             }, 20000);
         });
+
+        // Provider dropdown and conditional fields
+        function initProviderDropdown() {
+            const trigger = document.getElementById('aiProviderSelect');
+            const options = document.getElementById('aiProviderOptions');
+            const hidden = document.getElementById('aiProviderValue');
+            if (!trigger || !options || !hidden) return;
+            trigger.addEventListener('click', () => { options.classList.toggle('hidden'); });
+            trigger.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); options.classList.toggle('hidden'); } });
+            options.querySelectorAll('[data-value]').forEach(opt => {
+                opt.addEventListener('click', () => {
+                    const v = opt.getAttribute('data-value');
+                    setProvider(v);
+                    options.classList.add('hidden');
+                });
+            });
+            document.addEventListener('click', (e) => { if (!trigger.contains(e.target) && !options.contains(e.target)) options.classList.add('hidden'); });
+        }
+
+        function setProvider(p) {
+            const trigger = document.getElementById('aiProviderSelect');
+            const hidden = document.getElementById('aiProviderValue');
+            if (!trigger || !hidden) return;
+            hidden.value = p || '';
+            trigger.innerHTML = `${p || '（未选择）'}<span class="ml-2 text-slate-400">▾</span>`;
+            // show/hide provider-specific fields
+            const deep = document.getElementById('deepseekFields');
+            const gem = document.getElementById('geminiFields');
+            const cla = document.getElementById('claudeFields');
+            if (deep) deep.style.display = (p === 'deepseek') ? '' : 'none';
+            if (gem) gem.style.display = (p === 'gemini') ? '' : 'none';
+            if (cla) cla.style.display = (p === 'claude') ? '' : 'none';
+        }
+
+        function getProvider() { const v = document.getElementById('aiProviderValue'); return v ? v.value : ''; }
+
+        async function loadSecureWSKey() {
+            if (!currentAdminToken) { showToast('请先登录管理员', true); return; }
+            try {
+                const resp = await fetch('/api/admin/secure_ws', { headers: { 'Authorization': 'Bearer ' + currentAdminToken } });
+                if (!resp.ok) throw new Error('failed');
+                const data = await resp.json();
+                document.getElementById('secureWSKeyInput').value = data.key || '';
+                showToast('已载入 Secure WS 密钥');
+            } catch (e) { showToast('载入密钥失败', true); }
+        }
+
+        async function saveSecureWSKey() {
+            if (!currentAdminToken) { showToast('请先登录管理员', true); return; }
+            const key = document.getElementById('secureWSKeyInput').value.trim();
+            try {
+                const resp = await fetch('/api/admin/secure_ws', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ admin_token: currentAdminToken, key }) });
+                if (!resp.ok) throw new Error('save failed');
+                showToast('Secure WS 密钥已保存');
+            } catch (e) { showToast('保存密钥失败', true); }
+        }
     </script>
 </body>
 </html>

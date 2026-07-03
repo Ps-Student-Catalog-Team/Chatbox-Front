@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -96,6 +99,9 @@ func main() {
 	http.HandleFunc("/api/ai/chat", handleAIChat)
 	http.HandleFunc("/api/admin/ai/config", handleAdminSetAIConfig)
 	http.HandleFunc("/api/ai/config", handleGetAIConfig)
+	http.HandleFunc("/api/admin/login", handleAdminLogin)
+	http.HandleFunc("/api/admin/secure_ws", handleAdminSecureWS)
+	http.HandleFunc("/api/admin/refresh-token", handleRefreshToken)
 
 	port := 40001
 	addr := fmt.Sprintf(":%d", port)
@@ -458,6 +464,16 @@ func initDB() {
 	}
 	// 初始化默认配置
 	_, _ = db.Exec("INSERT OR IGNORE INTO ai_config (id, value) VALUES ('default', '{}')")
+
+	// secure_ws key storage
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS secure_ws (
+		id TEXT PRIMARY KEY,
+		value TEXT
+	);`)
+	if err != nil {
+		log.Fatalf("创建secure_ws表失败: %v", err)
+	}
+	_, _ = db.Exec("INSERT OR IGNORE INTO secure_ws (id, value) VALUES ('default', '')")
 }
 
 // AI 配置操作
@@ -485,6 +501,67 @@ func setAIConfigInDB(cfg map[string]interface{}) error {
 		broadcastAIConfigUpdate()
 	}
 	return err
+}
+
+// secure_ws key operations
+func getSecureWSKeyFromDB() (string, error) {
+	var raw string
+	err := db.QueryRow("SELECT value FROM secure_ws WHERE id = 'default'").Scan(&raw)
+	if err != nil {
+		return "", err
+	}
+	return raw, nil
+}
+
+func setSecureWSKeyInDB(val string) error {
+	_, err := db.Exec("INSERT OR REPLACE INTO secure_ws (id, value) VALUES ('default', ?)", val)
+	if err == nil {
+		// broadcast optional update
+		payload := map[string]interface{}{"type": "secure_ws_update", "configured": val != ""}
+		stateMutex.RLock()
+		for _, conn := range clients {
+			_ = conn.WriteJSON(payload)
+		}
+		stateMutex.RUnlock()
+	}
+	return err
+}
+
+// decrypt secure payload (expects base64 of nonce(12)+ciphertext)
+func decryptSecurePayload(b64 string, keyStr string) (map[string]interface{}, error) {
+	if b64 == "" || keyStr == "" {
+		return nil, fmt.Errorf("empty payload or key")
+	}
+	data, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return nil, err
+	}
+	k := []byte(keyStr)
+	if len(k) != 16 && len(k) != 24 && len(k) != 32 {
+		return nil, fmt.Errorf("invalid key length")
+	}
+	if len(data) < 12 {
+		return nil, fmt.Errorf("payload too short")
+	}
+	nonce := data[:12]
+	ct := data[12:]
+	block, err := aes.NewCipher(k)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	plain, err := gcm.Open(nil, nonce, ct, nil)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(plain, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func broadcastAIConfigUpdate() {
@@ -524,8 +601,16 @@ func saveSessionToken(username, token string) error {
 
 func getUsernameByToken(token string) (string, error) {
 	var username string
-	err := db.QueryRow("SELECT username FROM session_tokens WHERE token = ?", token).Scan(&username)
-	return username, err
+	var createdAt int64
+	err := db.QueryRow("SELECT username, created_at FROM session_tokens WHERE token = ?", token).Scan(&username, &createdAt)
+	if err != nil {
+		return "", err
+	}
+	// token expiry: 30 days
+	if time.Now().Unix()-createdAt > int64(30*24*3600) {
+		return "", fmt.Errorf("token expired")
+	}
+	return username, nil
 }
 
 func getTokenFromHeader(r *http.Request) string {
@@ -584,16 +669,44 @@ func broadcastExtensionsUpdate() {
 }
 
 func checkAdminSecret(r *http.Request) bool {
+	// 支持 Bearer token 或 query/body admin_token，兼容旧 secret
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" {
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+			token := strings.TrimSpace(parts[1])
+			if token != "" {
+				if user, err := getUsernameByToken(token); err == nil && user == "admin" {
+					return true
+				}
+			}
+		}
+	}
+	// query param admin_token
+	token := r.URL.Query().Get("admin_token")
+	if token != "" {
+		if user, err := getUsernameByToken(token); err == nil && user == "admin" {
+			return true
+		}
+	}
+	// 如果是 POST，尝试从请求体读取 admin_token（不消耗 Body）
+	if r.Method == http.MethodPost {
+		raw, _ := io.ReadAll(r.Body)
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		var body map[string]interface{}
+		_ = json.Unmarshal(raw, &body)
+		if s, ok := body["admin_token"].(string); ok && s != "" {
+			if user, err := getUsernameByToken(s); err == nil && user == "admin" {
+				return true
+			}
+		}
+		// restore body for caller
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+	}
+	// fallback to legacy secret param
 	secret := r.URL.Query().Get("secret")
 	if secret == adminSecret {
 		return true
-	}
-	if r.Method == http.MethodPost {
-		var body map[string]interface{}
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		if s, ok := body["secret"].(string); ok && s == adminSecret {
-			return true
-		}
 	}
 	return false
 }
@@ -624,6 +737,17 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		var payload map[string]interface{}
 		if err := json.Unmarshal(msgBytes, &payload); err != nil {
 			continue
+		}
+
+		// 如果启用了 secure_ws 并且为加密消息，尝试解密（PoC）
+		if secureEnabled, _ := getExtensionsFromDB(); secureEnabled["secure_ws"] {
+			if sp, ok := payload["secure_payload"].(string); ok && sp != "" {
+				if key, err := getSecureWSKeyFromDB(); err == nil && key != "" {
+					if decrypted, err := decryptSecurePayload(sp, key); err == nil {
+						payload = decrypted
+					}
+				}
+			}
 		}
 
 		action, _ := payload["action"].(string)
@@ -1300,6 +1424,78 @@ func handleAdminSetAIConfig(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
+// 管理接口：设置/获取 secure_ws key（仅管理员）
+func handleAdminSecureWS(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		if !checkAdminSecret(r) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		key, err := getSecureWSKeyFromDB()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"key": key})
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	raw, _ := io.ReadAll(r.Body)
+	r.Body = io.NopCloser(bytes.NewReader(raw))
+	if !checkAdminSecret(r) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	var body map[string]string
+	if err := json.Unmarshal(raw, &body); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	k := body["key"]
+	if err := setSecureWSKeyInDB(k); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// 刷新 token（管理员或用户可调用以续期自己的 token）
+func handleRefreshToken(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	raw, _ := io.ReadAll(r.Body)
+	r.Body = io.NopCloser(bytes.NewReader(raw))
+	var body map[string]string
+	if err := json.Unmarshal(raw, &body); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	old := body["token"]
+	if old == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	user, err := getUsernameByToken(old)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	newToken := generateToken()
+	if err := saveSessionToken(user, newToken); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"token": newToken})
+}
+
 // 公共接口：获取 AI 配置（不返回密钥），允许客户端查看 provider
 func handleGetAIConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -1385,9 +1581,18 @@ func handleAIChat(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	// 允许请求体中临时指定 provider（覆盖后端配置），例如用于前端直接指定测试 provider
+	provider := ""
+	if p, ok := payload["provider"].(string); ok && p != "" {
+		provider = p
+	}
 	// 读取 AI 配置并根据 provider 调用对应实现
 	cfg, _ := getAIConfigFromDB()
-	provider, _ := cfg["provider"].(string)
+	if provider == "" {
+		if pv, ok := cfg["provider"].(string); ok {
+			provider = pv
+		}
+	}
 	keysMap := map[string]string{}
 	if k, ok := cfg["keys"].(map[string]interface{}); ok {
 		for kk, vv := range k {
@@ -1420,32 +1625,168 @@ func handleAIChat(w http.ResponseWriter, r *http.Request) {
 }
 
 // provider implementations (占位或示例实现)
-func callDeepseek(prompt string, keys map[string]string) (string, error) {
-	// 示例: 如果配置了 key，尝试调用 Deepseek API（占位 URL）
-	apiKey := keys["deepseek_key"]
+func callProviderURL(provider string, keys map[string]string) (string, error) {
+	modelKey := provider + "_model"
+	urlKey := provider + "_url"
+	apiKey := keys[provider+"_key"]
+	model := keys[modelKey]
+	apiURL := keys[urlKey]
 	if apiKey == "" {
-		return "", fmt.Errorf("Deepseek key 未配置")
+		return "", fmt.Errorf("%s 未配置 (需要 %s_key)", strings.Title(provider), provider)
 	}
-	// 这里写入实际 API 调用逻辑，下面为占位回显
-	return fmt.Sprintf("[Deepseek] 回复: %s", prompt), nil
+	if apiURL == "" {
+		apiURL = deriveDefaultProviderURL(provider, model)
+	}
+	if apiURL == "" {
+		if model != "" {
+			return "", fmt.Errorf("%s 未配置 (无法从模型 %s 推断 URL)", strings.Title(provider), model)
+		}
+		return "", fmt.Errorf("%s 未配置 (需要 %s_url 或 %s_model)", strings.Title(provider), provider, provider)
+	}
+	return apiURL, nil
+}
+
+func deriveDefaultProviderURL(provider, model string) string {
+	provider = strings.ToLower(provider)
+	model = strings.TrimSpace(model)
+	switch provider {
+	case "deepseek":
+		if model == "" {
+			return "https://api.deepseek.example/v1/chat"
+		}
+		return fmt.Sprintf("https://api.deepseek.example/v1/models/%s/chat", model)
+	case "gemini":
+		if model == "" {
+			return "https://gemini.googleapis.com/v1/models/text-bison:generate"
+		}
+		return fmt.Sprintf("https://gemini.googleapis.com/v1/models/%s:generate", model)
+	case "claude":
+		return "https://api.anthropic.com/v1/complete"
+	}
+	return ""
+}
+
+func callDeepseek(prompt string, keys map[string]string) (string, error) {
+	apiURL, err := callProviderURL("deepseek", keys)
+	if err != nil {
+		return "", err
+	}
+	headers := map[string]string{}
+	for k, v := range keys {
+		if strings.HasPrefix(k, "deepseek_header_") {
+			h := strings.TrimPrefix(k, "deepseek_header_")
+			headers[h] = v
+		}
+	}
+	return callProviderHTTP(apiURL, keys["deepseek_key"], "deepseek", map[string]interface{}{"query": prompt}, headers)
 }
 
 func callGemini(prompt string, keys map[string]string) (string, error) {
-	apiKey := keys["gemini_key"]
-	if apiKey == "" {
-		return "", fmt.Errorf("Gemini key 未配置")
+	apiURL, err := callProviderURL("gemini", keys)
+	if err != nil {
+		return "", err
 	}
-	// 占位实现
-	return fmt.Sprintf("[Gemini] 回复: %s", prompt), nil
+	headers := map[string]string{}
+	for k, v := range keys {
+		if strings.HasPrefix(k, "gemini_header_") {
+			h := strings.TrimPrefix(k, "gemini_header_")
+			headers[h] = v
+		}
+	}
+	return callProviderHTTP(apiURL, keys["gemini_key"], "gemini", map[string]interface{}{"input": prompt}, headers)
 }
 
 func callClaude(prompt string, keys map[string]string) (string, error) {
-	apiKey := keys["claude_key"]
-	if apiKey == "" {
-		return "", fmt.Errorf("Claude key 未配置")
+	apiURL, err := callProviderURL("claude", keys)
+	if err != nil {
+		return "", err
 	}
-	// 占位实现
-	return fmt.Sprintf("[Claude] 回复: %s", prompt), nil
+	model := keys["claude_model"]
+	if model == "" {
+		model = "claude-2"
+	}
+	headers := map[string]string{}
+	for k, v := range keys {
+		if strings.HasPrefix(k, "claude_header_") {
+			h := strings.TrimPrefix(k, "claude_header_")
+			headers[h] = v
+		}
+	}
+	return callProviderHTTP(apiURL, keys["claude_key"], "claude", map[string]interface{}{"model": model, "prompt": prompt}, headers)
+}
+
+// 通用 HTTP 调用提供者
+func callProviderHTTP(apiURL, apiKey, provider string, payload interface{}, extraHeaders map[string]string) (string, error) {
+	client := &http.Client{Timeout: 15 * time.Second}
+	b, _ := json.Marshal(payload)
+	req, err := http.NewRequest("POST", apiURL, bytes.NewReader(b))
+	if err != nil {
+		return "", err
+	}
+	// 常见的鉴权头：尝试使用 Bearer 或 X-API-Key / x-api-key
+	if provider == "claude" {
+		req.Header.Set("x-api-key", apiKey)
+	} else {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+	// 额外自定义头
+	for hk, hv := range extraHeaders {
+		if hk == "" || hv == "" {
+			continue
+		}
+		req.Header.Set(hk, hv)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("provider returned %d: %s", resp.StatusCode, string(respBody))
+	}
+	// 尝试解析常见字段
+	var jr map[string]interface{}
+	_ = json.Unmarshal(respBody, &jr)
+	// 常见返回解析规则： reply/text/completion/result/output/candidates/outputs
+	if v, ok := jr["reply"].(string); ok && v != "" {
+		return v, nil
+	}
+	if v, ok := jr["text"].(string); ok && v != "" {
+		return v, nil
+	}
+	if v, ok := jr["completion"].(string); ok && v != "" {
+		return v, nil
+	}
+	if v, ok := jr["result"].(map[string]interface{}); ok {
+		if s, ok2 := v["output"].(string); ok2 && s != "" {
+			return s, nil
+		}
+	}
+	// Gemini-style: candidates -> content.text
+	if cands, ok := jr["candidates"].([]interface{}); ok && len(cands) > 0 {
+		if first, ok := cands[0].(map[string]interface{}); ok {
+			if cont, ok2 := first["content"].(map[string]interface{}); ok2 {
+				if txt, ok3 := cont["text"].(string); ok3 && txt != "" {
+					return txt, nil
+				}
+			}
+			if txt, ok4 := first["text"].(string); ok4 && txt != "" {
+				return txt, nil
+			}
+		}
+	}
+	// outputs array with text
+	if outs, ok := jr["outputs"].([]interface{}); ok && len(outs) > 0 {
+		if o0, ok := outs[0].(map[string]interface{}); ok {
+			if txt, ok2 := o0["text"].(string); ok2 && txt != "" {
+				return txt, nil
+			}
+		}
+	}
+	// 兜底返回原始 body 文本
+	return string(respBody), nil
 }
 
 // 获取消息历史接口
@@ -1679,12 +2020,12 @@ func handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		return
 	}
-	var req map[string]string
-	_ = json.NewDecoder(r.Body).Decode(&req)
-	if req["secret"] != adminSecret {
+	if !checkAdminSecret(r) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
+	var req map[string]string
+	_ = json.NewDecoder(r.Body).Decode(&req)
 
 	target := req["username"]
 	stateMutex.Lock()
@@ -1706,16 +2047,59 @@ func handleAdminDeleteMessage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		return
 	}
-	var req map[string]interface{}
-	_ = json.NewDecoder(r.Body).Decode(&req)
-	if req["secret"] != adminSecret {
+	if !checkAdminSecret(r) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
+	var req map[string]interface{}
+	_ = json.NewDecoder(r.Body).Decode(&req)
 
 	idFloat, _ := req["id"].(float64)
 	_, _ = db.Exec("DELETE FROM messages WHERE id = ?", int64(idFloat))
 	w.WriteHeader(http.StatusOK)
+}
+
+// 管理员登录（返回 token）
+func handleAdminLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if req.Username == "" || req.Password == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	// 支持两种登录：数据库中的 admin 用户 或 使用预设的 adminSecret
+	if req.Username != "admin" {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	// 优先尝试数据库验证，如果不存在或不匹配则回退到全局 adminSecret
+	var dbPwd string
+	err := db.QueryRow("SELECT password FROM users WHERE username = ?", req.Username).Scan(&dbPwd)
+	if err == nil && dbPwd == req.Password {
+		// 通过数据库认证
+		fmt.Printf("[INFO] admin login: db auth success for user=%s\n", req.Username)
+	} else if req.Password == adminSecret {
+		// 通过预设 secret 认证
+		fmt.Printf("[INFO] admin login: fallback secret auth for user=%s\n", req.Username)
+	} else {
+		fmt.Printf("[WARN] admin login: auth failed for user=%s\n", req.Username)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	token := generateToken()
+	_ = saveSessionToken(req.Username, token)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"token": token})
 }
 
 func handleAdminStatus(w http.ResponseWriter, r *http.Request) {
@@ -1745,12 +2129,12 @@ func handleAdminBroadcast(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		return
 	}
-	var req map[string]string
-	_ = json.NewDecoder(r.Body).Decode(&req)
-	if req["secret"] != adminSecret {
+	if !checkAdminSecret(r) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
+	var req map[string]string
+	_ = json.NewDecoder(r.Body).Decode(&req)
 
 	res, err := db.Exec(`INSERT INTO messages (target_type, target_id, sender, content, timestamp, avatar_url) 
 		VALUES ('public', 'global', '📢 系统公告', ?, ?, '')`, req["content"], time.Now().Unix())

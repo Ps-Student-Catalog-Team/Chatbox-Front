@@ -448,9 +448,6 @@
                     <button onclick="toggleSidebar(true); switchTab('friends');" id="btnTabFriends" class="p-3 rounded-xl transition cursor-pointer hover:bg-slate-800 hover:text-white">
                         📞
                     </button>
-                    <button onclick="openExtensionsModal();" id="btnExtensions" class="p-3 rounded-xl transition cursor-pointer hover:bg-slate-800 hover:text-white" title="扩展">
-                        🧩
-                    </button>
                     <button onclick="window.location.href='settings.html'" class="p-3 rounded-xl transition cursor-pointer hover:bg-slate-800 hover:text-white" title="设置">
                         ⚙️
                     </button>
@@ -981,6 +978,13 @@
                                 window._extensionsCache = data.extensions;
                                 renderExtensionsModal();
                                 updateSidebarExtensions();
+                            }
+                            break;
+                        case "ai_config_update":
+                            if (data && data.config) {
+                                window._aiConfig = data.config;
+                                // 若需要，更新 UI 或提醒用户
+                                console.log('AI 配置已更新', data.config);
                             }
                             break;
                         case "publish_announcement_err":
@@ -2550,11 +2554,7 @@
             }
         }
 
-        // 清空私聊记录函数已分离到 chatHistory.js
 
-        /**
-         * 确认退出群聊
-         */
         function confirmQuitGroup() {
             if (!activeTarget || activeTarget.type !== 'group') {
                 alert("请先选择一个群聊");
@@ -2567,9 +2567,7 @@
             }
         }
 
-        /**
-         * 更新在线人数
-         */
+
         async function updateOnlineCount() {
             try {
                 const response = await fetch(`${httpUri}/api/online-users`, {
@@ -2691,10 +2689,10 @@
         function getExtensionsState() { return window._extensionsCache || {}; }
         async function setExtensionState(key, enabled) {
             // 仅管理员可通过后端切换
-            const secret = localStorage.getItem('lanchat_admin_secret');
-            if (!secret) { alert('仅管理员可切换扩展'); return; }
+            const token = localStorage.getItem('lanchat_admin_token');
+            if (!token) { alert('仅管理员可切换扩展'); return; }
             try {
-                const resp = await fetch('/api/admin/extensions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret, key, enabled }) });
+                const resp = await fetch('/api/admin/extensions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ admin_token: token, key, enabled }) });
                 if (!resp.ok) throw new Error('请求失败');
                 const updated = await resp.json();
                 window._extensionsCache = updated || {};
@@ -2725,7 +2723,7 @@
             const actBtn = document.getElementById('extModalActivate');
             if (!list) return;
             const st = getExtensionsState();
-            const isAdmin = !!localStorage.getItem('lanchat_admin_secret');
+            const isAdmin = !!localStorage.getItem('lanchat_admin_token');
             list.innerHTML = '';
             availableExtensions.forEach(ext => {
                 const row = document.createElement('div');
@@ -2803,10 +2801,7 @@
                     btn.title = 'AI 聊天';
                     btn.innerText = '🤖';
                     btn.onclick = () => { openAIChat(); };
-                    // 插入在扩展按钮之后
-                    const extBtn = document.getElementById('btnExtensions');
-                    if (extBtn && extBtn.parentElement) extBtn.parentElement.insertBefore(btn, extBtn.nextSibling);
-                    else sidebarButtonsContainer.appendChild(btn);
+                    sidebarButtonsContainer.appendChild(btn);
                 }
             } else {
                 if (existing) existing.remove();
@@ -2875,6 +2870,7 @@
 
         // 在页面加载时从后端加载扩展状态并同步侧边栏
         window.addEventListener('DOMContentLoaded', () => { loadExtensionsFromServer(); });
+
 
     </script>
         <!-- 扩展模态 -->
