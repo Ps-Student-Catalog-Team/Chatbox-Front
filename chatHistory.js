@@ -18,10 +18,7 @@ async function loadHistoryMessages(type, id) {
     }
 }
 
-/**
- * 自动加载所有私聊和群聊的历史消息
- * 在用户登录后自动调用，提高首次加载体验
- */
+
 async function loadAllPrivateChatHistory() {
     const loadTasks = [];
     
@@ -42,13 +39,9 @@ async function loadAllPrivateChatHistory() {
     // 并行加载所有消息
     if (loadTasks.length > 0) {
         await Promise.all(loadTasks);
-        console.log(`[聊天记录] 已自动加载 ${globalFriends.length} 个私聊和 ${globalGroups.length} 个群聊的历史消息`);
     }
 }
 
-/**
- * 刷新当前活跃聊天的消息
- */
 function refreshAllMessages() {
     if (!activeTarget) {
         alert("请先选择一个聊天窗口");
@@ -57,10 +50,7 @@ function refreshAllMessages() {
     loadHistoryMessages(activeTarget.type, activeTarget.id);
 }
 
-/**
- * 清空私聊记录
- * 仅清空本地缓存，不影响服务器数据
- */
+
 function clearPrivateChatHistory() {
     if (!activeTarget || activeTarget.type !== 'private') {
         alert("请先选择一个私聊");
@@ -76,10 +66,7 @@ function clearPrivateChatHistory() {
     }
 }
 
-/**
- * 处理接收到的消息并路由到对应的聊天窗口
- * @param {object} msg - 接收到的消息对象
- */
+
 function routeIncomingMessage(msg) {
     let sessionKey = "";
     if (msg.target_type === "public") {
