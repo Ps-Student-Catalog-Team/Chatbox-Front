@@ -22,6 +22,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/gorilla/websocket"
 	_ "modernc.org/sqlite"
@@ -53,11 +55,12 @@ type AdminMessage struct {
 }
 
 var (
-	db          *sql.DB
-	clients     = make(map[string]*websocket.Conn)
-	globalMute  = false
-	stateMutex  sync.RWMutex
-	adminSecret = "admin666" // 管理员密码
+	db              *sql.DB
+	clients         = make(map[string]*websocket.Conn)
+	globalMute      = false
+	stateMutex      sync.RWMutex
+	adminSecret     = "admin666" // 默认管理员密码
+	adminConfigPath = "config.txt"
 
 	upgrader = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
@@ -69,6 +72,7 @@ func main() {
 		log.Fatalf("无法创建上传目录: %v", err)
 	}
 
+	loadAdminConfig()
 	initDB()
 	defer db.Close()
 
@@ -126,6 +130,110 @@ func main() {
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatalf("服务器启动失败: %v", err)
 	}
+}
+
+func loadAdminConfig() {
+	password, err := readAdminPasswordFromConfig()
+	if err != nil {
+		log.Printf("读取管理员配置失败: %v", err)
+		return
+	}
+	if password != "" {
+		adminSecret = password
+	}
+}
+
+func readAdminPasswordFromConfig() (string, error) {
+	data, err := os.ReadFile(adminConfigPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			content := "# 管理员密码配置\nadminpassword=admin666\n"
+			if writeErr := os.WriteFile(adminConfigPath, []byte(content), 0644); writeErr != nil {
+				return "", writeErr
+			}
+			fmt.Printf("[INFO] 首次启动，已生成配置文件 %s，请修改 adminpassword 项\n", adminConfigPath)
+			return adminSecret, nil
+		}
+		return "", err
+	}
+
+	text, err := decodeConfigText(data)
+	if err != nil {
+		return "", err
+	}
+
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "adminpassword=") {
+			value := strings.TrimSpace(strings.TrimPrefix(trimmed, "adminpassword="))
+			if value == "" {
+				return adminSecret, nil
+			}
+			return value, nil
+		}
+	}
+
+	if !strings.Contains(text, "adminpassword=") {
+		updated := strings.TrimRight(text, "\n") + "\nadminpassword=" + adminSecret + "\n"
+		if writeErr := os.WriteFile(adminConfigPath, []byte(updated), 0644); writeErr != nil {
+			return "", writeErr
+		}
+	}
+	return adminSecret, nil
+}
+
+func decodeConfigText(data []byte) (string, error) {
+	if len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF {
+		data = data[3:]
+	}
+	if len(data) >= 2 {
+		if data[0] == 0xFF && data[1] == 0xFE {
+			return decodeUTF16LE(data[2:]), nil
+		}
+		if data[0] == 0xFE && data[1] == 0xFF {
+			return decodeUTF16BE(data[2:]), nil
+		}
+	}
+	if utf8.Valid(data) {
+		return string(data), nil
+	}
+	return string(data), nil
+}
+
+func decodeUTF16LE(data []byte) string {
+	if len(data)%2 != 0 {
+		data = data[:len(data)-1]
+	}
+	u16s := make([]uint16, len(data)/2)
+	for i := 0; i < len(u16s); i++ {
+		u16s[i] = uint16(data[i*2]) | uint16(data[i*2+1])<<8
+	}
+	return string(utf16.Decode(u16s))
+}
+
+func decodeUTF16BE(data []byte) string {
+	if len(data)%2 != 0 {
+		data = data[:len(data)-1]
+	}
+	u16s := make([]uint16, len(data)/2)
+	for i := 0; i < len(u16s); i++ {
+		u16s[i] = uint16(data[i*2+1]) | uint16(data[i*2])<<8
+	}
+	return string(utf16.Decode(u16s))
+}
+
+func getAdminPassword() string {
+	password, err := readAdminPasswordFromConfig()
+	if err != nil {
+		return adminSecret
+	}
+	if password != "" {
+		return password
+	}
+	return adminSecret
 }
 
 func getLocalIP() (string, bool) {
@@ -705,7 +813,7 @@ func checkAdminSecret(r *http.Request) bool {
 	}
 	// fallback to legacy secret param
 	secret := r.URL.Query().Get("secret")
-	if secret == adminSecret {
+	if strings.EqualFold(secret, getAdminPassword()) {
 		return true
 	}
 	return false
@@ -2082,14 +2190,14 @@ func handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-	// 优先尝试数据库验证，如果不存在或不匹配则回退到全局 adminSecret
+	// 优先尝试数据库验证，如果不存在或不匹配则回退到配置文件中的 adminpassword
 	var dbPwd string
 	err := db.QueryRow("SELECT password FROM users WHERE username = ?", req.Username).Scan(&dbPwd)
-	if err == nil && dbPwd == req.Password {
+	if err == nil && strings.EqualFold(dbPwd, req.Password) {
 		// 通过数据库认证
 		fmt.Printf("[INFO] admin login: db auth success for user=%s\n", req.Username)
-	} else if req.Password == adminSecret {
-		// 通过预设 secret 认证
+	} else if strings.EqualFold(req.Password, getAdminPassword()) {
+		// 通过配置文件中的 secret 认证
 		fmt.Printf("[INFO] admin login: fallback secret auth for user=%s\n", req.Username)
 	} else {
 		fmt.Printf("[WARN] admin login: auth failed for user=%s\n", req.Username)

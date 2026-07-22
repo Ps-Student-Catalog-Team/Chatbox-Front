@@ -1,0 +1,2 @@
+﻿# 管理员密码配置
+adminpassword=admin666
