@@ -1518,15 +1518,28 @@ func handleAdminSetAIConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	// 仅存储 provider 与 keys
 	cfg := map[string]interface{}{}
+	hasConfig := false
 	if p, ok := body["provider"].(string); ok {
 		cfg["provider"] = p
+		if strings.TrimSpace(p) != "" {
+			hasConfig = true
+		}
 	}
 	if k, ok := body["keys"].(map[string]interface{}); ok {
 		cfg["keys"] = k
+		for _, v := range k {
+			if s, ok2 := v.(string); ok2 && strings.TrimSpace(s) != "" {
+				hasConfig = true
+				break
+			}
+		}
 	}
 	if err := setAIConfigInDB(cfg); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
+	}
+	if hasConfig {
+		_ = setExtensionInDB("ai_chat", true)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
@@ -1765,9 +1778,9 @@ func deriveDefaultProviderURL(provider, model string) string {
 		return fmt.Sprintf("https://api.deepseek.example/v1/models/%s/chat", model)
 	case "gemini":
 		if model == "" {
-			return "https://gemini.googleapis.com/v1/models/text-bison:generate"
+			return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 		}
-		return fmt.Sprintf("https://gemini.googleapis.com/v1/models/%s:generate", model)
+		return fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent", model)
 	case "claude":
 		return "https://api.anthropic.com/v1/complete"
 	}
@@ -1801,7 +1814,13 @@ func callGemini(prompt string, keys map[string]string) (string, error) {
 			headers[h] = v
 		}
 	}
-	return callProviderHTTP(apiURL, keys["gemini_key"], "gemini", map[string]interface{}{"input": prompt}, headers)
+	payload := map[string]interface{}{
+		"contents": []map[string]interface{}{{
+			"role":  "user",
+			"parts": []map[string]interface{}{{"text": prompt}},
+		}},
+	}
+	return callProviderHTTP(apiURL, keys["gemini_key"], "gemini", payload, headers)
 }
 
 func callClaude(prompt string, keys map[string]string) (string, error) {
@@ -1834,6 +1853,8 @@ func callProviderHTTP(apiURL, apiKey, provider string, payload interface{}, extr
 	// 常见的鉴权头：尝试使用 Bearer 或 X-API-Key / x-api-key
 	if provider == "claude" {
 		req.Header.Set("x-api-key", apiKey)
+	} else if provider == "gemini" {
+		req.Header.Set("x-goog-api-key", apiKey)
 	} else {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
@@ -1852,7 +1873,7 @@ func callProviderHTTP(apiURL, apiKey, provider string, payload interface{}, extr
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("provider returned %d: %s", resp.StatusCode, string(respBody))
+		return "", fmt.Errorf("%s", friendlyProviderError(resp.StatusCode, respBody, provider))
 	}
 	// 尝试解析常见字段
 	var jr map[string]interface{}
@@ -1872,12 +1893,21 @@ func callProviderHTTP(apiURL, apiKey, provider string, payload interface{}, extr
 			return s, nil
 		}
 	}
-	// Gemini-style: candidates -> content.text
+	// Gemini-style: candidates -> content.text / parts.text
 	if cands, ok := jr["candidates"].([]interface{}); ok && len(cands) > 0 {
 		if first, ok := cands[0].(map[string]interface{}); ok {
 			if cont, ok2 := first["content"].(map[string]interface{}); ok2 {
 				if txt, ok3 := cont["text"].(string); ok3 && txt != "" {
 					return txt, nil
+				}
+				if parts, ok4 := cont["parts"].([]interface{}); ok4 && len(parts) > 0 {
+					for _, part := range parts {
+						if pmap, ok5 := part.(map[string]interface{}); ok5 {
+							if txt2, ok6 := pmap["text"].(string); ok6 && txt2 != "" {
+								return txt2, nil
+							}
+						}
+					}
 				}
 			}
 			if txt, ok4 := first["text"].(string); ok4 && txt != "" {
@@ -1895,6 +1925,42 @@ func callProviderHTTP(apiURL, apiKey, provider string, payload interface{}, extr
 	}
 	// 兜底返回原始 body 文本
 	return string(respBody), nil
+}
+
+func friendlyProviderError(statusCode int, body []byte, provider string) string {
+	providerName := strings.TrimSpace(provider)
+	if providerName == "" {
+		providerName = "AI"
+	}
+
+	var parsed struct {
+		Error struct {
+			Message string `json:"message"`
+			Status  string `json:"status"`
+			Code    int    `json:"code"`
+		} `json:"error"`
+	}
+	_ = json.Unmarshal(body, &parsed)
+
+	msg := strings.TrimSpace(parsed.Error.Message)
+	if msg == "" {
+		msg = strings.TrimSpace(string(body))
+	}
+	msg = strings.ReplaceAll(msg, "\n", " ")
+
+	switch {
+	case statusCode == http.StatusTooManyRequests || strings.Contains(strings.ToLower(msg), "quota") || strings.Contains(strings.ToLower(msg), "resource_exhausted"):
+		return fmt.Sprintf("%s 服务配额已用尽，请稍后再试，或更换为可用的 API Key / 模型。", providerName)
+	case statusCode == http.StatusUnauthorized || strings.Contains(strings.ToLower(msg), "unauthorized") || strings.Contains(strings.ToLower(msg), "api key"):
+		return fmt.Sprintf("%s 服务鉴权失败，请检查 API Key 是否正确。", providerName)
+	case statusCode == http.StatusNotFound || strings.Contains(strings.ToLower(msg), "not found"):
+		return fmt.Sprintf("%s 服务模型或接口不存在，请检查模型名称和接口配置。", providerName)
+	default:
+		if msg != "" {
+			return fmt.Sprintf("%s 服务返回错误：%s", providerName, msg)
+		}
+		return fmt.Sprintf("%s 服务返回错误（%d）。", providerName, statusCode)
+	}
 }
 
 // 获取消息历史接口

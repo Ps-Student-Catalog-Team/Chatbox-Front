@@ -1,6 +1,5 @@
 class AIChatController {
     constructor(config = {}) {
-        // 配置项解耦
         this.config = {
             apiEndpoint: config.apiEndpoint || '/api/ai/chat',
             defaultExtensionsState: { ai_chat: true },
@@ -15,16 +14,15 @@ class AIChatController {
             }
         };
 
-        // 状态管理中心化
         this.state = {
             isSending: false,
             defaultSendText: '发送'
         };
 
-        // DOM 节点缓存字典
         this.elements = {};
         
-        // 绑定 this 上下文，确保事件监听器可以正确调用类方法
+        this.abortController = null;
+        
         this.handleInputKeydown = this.handleInputKeydown.bind(this);
         this.handleModalClick = this.handleModalClick.bind(this);
         this.handleDocumentKeydown = this.handleDocumentKeydown.bind(this);
@@ -33,7 +31,6 @@ class AIChatController {
         this.openAIChat = this.openAIChat.bind(this);
     }
 
-    // 初始化入口
     init() {
         this.cacheDOM();
         if (!this.elements.modal) {
@@ -41,7 +38,6 @@ class AIChatController {
             return;
         }
         
-        // 记录按钮默认文本
         if (this.elements.sendButton) {
             this.state.defaultSendText = this.elements.sendButton.textContent || '发送';
         }
@@ -50,7 +46,6 @@ class AIChatController {
         this.attachEventListeners();
     }
 
-    // 统一缓存 DOM，避免重复查询
     cacheDOM() {
         const { selectors } = this.config;
         for (const [key, selector] of Object.entries(selectors)) {
@@ -64,7 +59,6 @@ class AIChatController {
             : this.config.defaultExtensionsState;
     }
 
-    // 更新侧边栏入口按钮
     updateSidebarExtensions() {
         const state = this.getExtensionsStateSafe();
         const container = this.elements.sidebarExtensions;
@@ -81,17 +75,22 @@ class AIChatController {
             btn.addEventListener('click', this.openAIChat);
             container.appendChild(btn);
         } else if (!state.ai_chat && existingBtn) {
+            existingBtn.removeEventListener('click', this.openAIChat);
             existingBtn.remove();
         }
     }
 
     openAIChat() {
         this.elements.modal.classList.remove('hidden');
-        this.elements.input?.focus();
+        setTimeout(() => this.elements.input?.focus(), 50);
     }
 
     closeAIChat() {
         this.elements.modal.classList.add('hidden');
+        if (this.state.isSending && this.abortController) {
+            this.abortController.abort();
+            this.abortController = null;
+        }
     }
 
     setSendingState(isSending) {
@@ -102,18 +101,22 @@ class AIChatController {
         if (sendButton) {
             sendButton.disabled = isSending;
             sendButton.textContent = isSending ? '发送中...' : this.state.defaultSendText;
+            // 样式调整：发送中可降低不透明度
+            if (isSending) {
+                sendButton.classList.add('opacity-50', 'cursor-not-allowed');
+            } else {
+                sendButton.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
         }
     }
 
-    // 渲染消息气泡，并返回该 DOM 节点以便流式追加内容
     appendChatMessage(text, type = 'user') {
         const win = this.elements.chatWindow;
         if (!win) return null;
 
-        // 样式字典化
         const styles = {
             user: 'text-sm text-slate-800 mb-2 font-medium',
-            ai: 'text-sm text-slate-700 mb-3 whitespace-pre-wrap', // 增加 whitespace-pre-wrap 以支持换行
+            ai: 'text-sm text-slate-700 mb-3 whitespace-pre-wrap', 
             error: 'text-sm text-rose-500 mb-2 font-bold'
         };
 
@@ -127,12 +130,10 @@ class AIChatController {
         return msgDiv;
     }
 
-    // 创建一个空的 AI 消息气泡，为流式输出占位
     createEmptyAIMessage() {
         return this.appendChatMessage('AI：', 'ai');
     }
 
-    // 提取 HTTP 非 200 状态下的错误信息
     async extractErrorMessage(response) {
         if (response.ok) return null;
         
@@ -156,19 +157,18 @@ class AIChatController {
         return detail ? `AI 错误：${detail}` : 'AI 服务请求失败，请稍后重试。';
     }
 
-    // 核心流式发送逻辑
     async sendAIMessage() {
         if (this.state.isSending) return;
 
         const prompt = this.elements.input?.value.trim();
         if (!prompt) return;
 
-        // 1. 渲染用户消息，清空输入框并锁定发送状态
         this.appendChatMessage(`你：${prompt}`, 'user');
         this.elements.input.value = '';
         this.setSendingState(true);
 
-        // 2. 预先创建一个空的 AI 消息气泡
+        this.abortController = new AbortController();
+
         const aiMessageNode = this.createEmptyAIMessage();
         let aiResponseText = '';
 
@@ -177,22 +177,22 @@ class AIChatController {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Accept': 'text/event-stream' // 声明接收流式数据
+                    'Accept': 'text/event-stream' 
                 },
-                body: JSON.stringify({ prompt, stream: true }) 
+                body: JSON.stringify({ prompt, stream: true }),
+                signal: this.abortController.signal
             });
 
-            // 异常处理
             if (!response.ok) {
                 const errorMessage = await this.extractErrorMessage(response);
                 if (aiMessageNode) {
                     aiMessageNode.className = 'text-sm text-rose-500 mb-2 font-bold';
                     aiMessageNode.textContent = errorMessage;
                 }
+                console.error('[AIChat] 请求失败:', errorMessage);
                 return;
             }
 
-            // 如果后端没有采用 SSE/流式返回（例如返回 JSON），做回退处理
             const ct = (response.headers.get('Content-Type') || '').toLowerCase();
             if (!ct.includes('text/event-stream') && ct.includes('application/json')) {
                 try {
@@ -205,13 +205,11 @@ class AIChatController {
                 return;
             }
 
-            // 3. 读取流数据
             const reader = response.body.getReader();
             const decoder = new TextDecoder('utf-8');
             let done = false;
             let buffer = '';
 
-            // 4. 循环解析 SSE 格式流
             while (!done) {
                 const { value, done: readerDone } = await reader.read();
                 done = readerDone;
@@ -219,25 +217,26 @@ class AIChatController {
                 if (value) {
                     buffer += decoder.decode(value, { stream: true });
                     const lines = buffer.split('\n');
-                    buffer = lines.pop(); // 保留最后一行未完整的数据
+                    buffer = lines.pop(); 
 
                     for (const line of lines) {
                         const trimmedLine = line.trim();
                         if (!trimmedLine) continue;
 
                         if (trimmedLine.startsWith('data: ')) {
-                            const dataStr = trimmedLine.slice(6);
+                            const dataStr = trimmedLine.slice(6).trim();
                             
-                            if (dataStr === '[DONE]') break; 
+                            if (dataStr === '[DONE]') {
+                                done = true;
+                                break; 
+                            }
 
                             try {
                                 const dataObj = JSON.parse(dataStr);
-                                // 注意：这里的 delta/content 取决于你后端的字段设定
                                 const delta = dataObj.delta || dataObj.content || dataObj.text || '';
                                 
                                 if (delta) {
                                     aiResponseText += delta;
-                                    // 实时更新气泡文字并滚动到底部
                                     if (aiMessageNode) {
                                         aiMessageNode.textContent = `AI：${aiResponseText}`;
                                     }
@@ -246,13 +245,21 @@ class AIChatController {
                                     }
                                 }
                             } catch (e) {
-                                console.warn('[AIChat] 解析流式 JSON 失败:', dataStr);
                             }
                         }
                     }
                 }
             }
         } catch (error) {
+            if (error.name === 'AbortError') {
+                if (aiMessageNode && !aiResponseText) {
+                    aiMessageNode.textContent = 'AI：(请求已取消)';
+                } else if (aiMessageNode) {
+                    aiMessageNode.textContent += '\n[已停止生成]';
+                }
+                return;
+            }
+
             if (aiMessageNode) {
                 aiMessageNode.className = 'text-sm text-rose-500 mb-2 font-bold';
                 aiMessageNode.textContent += '\n(网络连接中断或请求失败)';
@@ -260,33 +267,34 @@ class AIChatController {
             console.error('[AIChat] 流式消息发送失败：', error);
         } finally {
             this.setSendingState(false);
-            this.elements.input?.focus();
+            this.abortController = null;
+            
+
+            if (!this.elements.modal?.classList.contains('hidden')) {
+                this.elements.input?.focus();
+            }
         }
     }
 
-    // 键盘事件处理
     handleInputKeydown(event) {
-        if (event.key === 'Enter' && !event.shiftKey) {
+        if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
             event.preventDefault();
             this.sendAIMessage();
         }
     }
 
-    // 点击遮罩层关闭模态框
     handleModalClick(event) {
         if (event.target === event.currentTarget) {
             this.closeAIChat();
         }
     }
 
-    // ESC 快捷键关闭
     handleDocumentKeydown(event) {
         if (event.key === 'Escape' && !this.elements.modal.classList.contains('hidden')) {
             this.closeAIChat();
         }
     }
 
-    // 挂载所有事件监听
     attachEventListeners() {
         const { modal, sendButton, closeButton, input } = this.elements;
 
@@ -297,8 +305,12 @@ class AIChatController {
         document.addEventListener('keydown', this.handleDocumentKeydown);
     }
 
-    // 卸载机制 (供 SPA 页面切换时清理内存使用)
     destroy() {
+        if (this.abortController) {
+            this.abortController.abort();
+            this.abortController = null;
+        }
+
         const { modal, sendButton, closeButton, input } = this.elements;
 
         modal?.removeEventListener('click', this.handleModalClick);
@@ -308,15 +320,25 @@ class AIChatController {
         document.removeEventListener('keydown', this.handleDocumentKeydown);
         
         const existingBtn = document.getElementById('btnAICHat');
-        if (existingBtn) existingBtn.remove();
+        if (existingBtn) {
+            existingBtn.removeEventListener('click', this.openAIChat);
+            existingBtn.remove();
+        }
     }
 }
 
-// 启动代码
+window.AIChat = {
+    updateSidebarExtensions() {
+        if (window.aiChatInstance?.updateSidebarExtensions) {
+            window.aiChatInstance.updateSidebarExtensions();
+        }
+    }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
-    // 实例化并暴露给全局
     window.aiChatInstance = new AIChatController({
         apiEndpoint: '/api/ai/chat' // 可在外部动态修改
     });
     window.aiChatInstance.init();
+    window.AIChat = window.aiChatInstance;
 });
