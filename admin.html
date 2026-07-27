@@ -14,13 +14,15 @@
         body { margin: 0; min-height: 100dvh; background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%); color: #0f172a; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
         .glass-card { background: rgba(255, 255, 255, 0.86); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
         .tab-nav { position: relative; display: inline-flex; gap: 0.55rem; align-items: stretch; background: #e2e8f0; border-radius: 1.5rem; padding: 0.25rem; }
-        .tab-indicator { position: absolute; top: 0.25rem; left: 0.25rem; bottom: 0.25rem; width: 0; border-radius: 1.25rem; background: #0f172a; transition: transform 240ms ease, width 240ms ease; }
+        .tab-indicator { position: absolute; top: 0.25rem; left: 0; bottom: 0.25rem; width: 0; border-radius: 1.25rem; background: #0f172a; transition: left 240ms ease, width 240ms ease, opacity 240ms ease; opacity: 1; }
         .tab-btn { position: relative; z-index: 10; border-radius: 1rem; color: #475569; text-align: center; min-width: 7rem; padding: 0.75rem 0.9rem; transition: color 180ms ease, transform 180ms ease; }
         .tab-btn.active { color: #ffffff; }
         .tab-btn:hover { color: #0f172a; transform: translateY(-1px); }
         .panel-card { animation: fadeUp 220ms ease-out both; }
         @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes refreshPulse { 0% { opacity: 0; transform: translateY(-4px) scale(0.96); } 30% { opacity: 1; transform: translateY(0) scale(1); } 100% { opacity: 0; transform: translateY(4px) scale(0.98); } }
         #usersContentPanel { transition: max-height 240ms ease, opacity 240ms ease, margin 240ms ease; overflow: hidden; }
+        #usersRefreshStatus { animation: refreshPulse 1.6s ease forwards; }
         #usersContentPanel.hidden { max-height: 0; opacity: 0; margin-top: 0; margin-bottom: 0; }
         #toast { transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         /* 扩展列表与详情交互样式 */
@@ -84,10 +86,11 @@
                     <div class="border-b border-slate-200/70 bg-slate-50/70 px-4 py-4 sm:px-6">
                         <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                             <div>
-                                <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">账号与 IP 映射</p>
-                                <p class="mt-1 text-xs text-slate-400">查看当前在线状态并快速删除异常账号</p>
+                                <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">用户管理</p>
+                                <p class="mt-1 text-xs text-slate-400">查看当前在线状态、搜索用户并快速删除异常账号</p>
                             </div>
                             <div class="flex flex-wrap items-center gap-2">
+                                <span id="usersRefreshStatus" class="hidden rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">已刷新</span>
                                 <button onclick="toggleUsersPanel()" id="toggleUsersPanelBtn" class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100">收起</button>
                                 <button onclick="refreshUsers()" class="text-sm font-semibold text-sky-600 transition hover:text-sky-500">刷新</button>
                             </div>
@@ -121,18 +124,19 @@
                             </table>
                         </div>
                         <div id="userPaginationBar" class="flex flex-col gap-3 border-t border-slate-100 bg-white/70 px-4 py-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6"></div>
-                        <div class="border-t border-slate-200/70 bg-slate-50/70 px-4 py-4 sm:px-6">
-                            <div>
-                                <h3 class="text-sm font-bold text-slate-900">修改管理员密码</h3>
-                                <p class="mt-1 text-xs text-slate-500">修改管理员登录密码，旧密码验证通过后生效。</p>
-                            </div>
-                            <div class="mt-4 space-y-3">
-                                <input id="oldAdminPassword" type="password" placeholder="请输入当前管理员密码" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-900">
-                                <input id="newAdminPassword" type="password" placeholder="请输入新的管理员密码" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-900">
-                                <input id="confirmAdminPassword" type="password" placeholder="请再次输入新的管理员密码" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-900">
-                                <button onclick="changeAdminPassword()" class="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500">保存密码</button>
-                            </div>
+                    </div>
+                    <div class="border-t border-slate-200/70 bg-slate-50/70 px-4 py-4 sm:px-6">
+                        <div>
+                            <h3 class="text-sm font-bold text-slate-900">修改管理员密码</h3>
+                            <p class="mt-1 text-xs text-slate-500">修改管理员登录密码，旧密码验证通过后生效。</p>
                         </div>
+                        <div class="mt-4 space-y-3">
+                            <input id="oldAdminPassword" type="password" placeholder="请输入当前管理员密码" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-900">
+                            <input id="newAdminPassword" type="password" placeholder="请输入新的管理员密码" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-900">
+                            <input id="confirmAdminPassword" type="password" placeholder="请再次输入新的管理员密码" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-900">
+                            <button onclick="changeAdminPassword()" class="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500">保存密码</button>
+                        </div>
+                    </div>
                     </div>
                 </section>
 
@@ -251,11 +255,12 @@
 
     <script>
         const adminTokenKey = 'lanchat_admin_token';
+        const usersPageSizeKey = 'lanchat_admin_users_page_size';
         let currentAdminToken = '';
         let allUsersData = [];
         let usersSearchText = '';
         let usersCurrentPage = 1;
-        let usersPageSize = 20;
+        let usersPageSize = Number(localStorage.getItem(usersPageSizeKey)) || 20;
         let usersPanelExpanded = true;
 
         function saveAdminToken(token) { localStorage.setItem(adminTokenKey, token); }
@@ -346,8 +351,12 @@
             const buttonRect = button.getBoundingClientRect();
             const navRect = nav.getBoundingClientRect();
             const offset = buttonRect.left - navRect.left;
-            indicator.style.width = `${buttonRect.width}px`;
-            indicator.style.transform = `translateX(${offset}px)`;
+            const width = buttonRect.width || button.offsetWidth || button.clientWidth;
+            if (width <= 0) return;
+            indicator.style.display = 'block';
+            indicator.style.width = `${width}px`;
+            indicator.style.left = `${offset}px`;
+            indicator.style.opacity = '1';
         }
 
         function switchTab(tabName) {
@@ -389,6 +398,16 @@
                 });
             }
             btn.innerText = usersPanelExpanded ? '收起' : '展开';
+        }
+
+        function showUsersRefreshStatus() {
+            const badge = document.getElementById('usersRefreshStatus');
+            if (!badge) return;
+            badge.classList.remove('hidden');
+            window.clearTimeout(showUsersRefreshStatus.timer);
+            showUsersRefreshStatus.timer = window.setTimeout(() => {
+                badge.classList.add('hidden');
+            }, 1600);
         }
 
         function renderUsersTable() {
@@ -464,6 +483,7 @@
                 allUsersData = Array.isArray(data) ? data : [];
                 usersCurrentPage = 1;
                 renderUsersTable();
+                showUsersRefreshStatus();
             } catch (e) { showToast('拉取用户列表失败', true); }
         }
 
@@ -742,8 +762,10 @@
                 });
             }
             if (pageSizeSelect) {
+                pageSizeSelect.value = String(usersPageSize);
                 pageSizeSelect.addEventListener('change', (e) => {
                     usersPageSize = parseInt(e.target.value, 10) || 20;
+                    localStorage.setItem(usersPageSizeKey, String(usersPageSize));
                     usersCurrentPage = 1;
                     renderUsersTable();
                 });
@@ -756,6 +778,11 @@
                 }
             });
             switchTab('users');
+            window.setInterval(() => {
+                const loginScreen = document.getElementById('loginScreen');
+                if (loginScreen.classList.contains('hidden')) {
+                    if (!document.getElementById('panel-users').classList.contains('hidden')) refreshUsers();
+                    if (!document.getElementById('panel-messages').classList.contains('hidden')) refreshMessages();
                 }
             }, 20000);
         });
