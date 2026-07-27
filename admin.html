@@ -20,6 +20,8 @@
         .tab-btn:hover { color: #0f172a; transform: translateY(-1px); }
         .panel-card { animation: fadeUp 220ms ease-out both; }
         @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        #usersContentPanel { transition: max-height 240ms ease, opacity 240ms ease, margin 240ms ease; overflow: hidden; }
+        #usersContentPanel.hidden { max-height: 0; opacity: 0; margin-top: 0; margin-bottom: 0; }
         #toast { transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         /* 扩展列表与详情交互样式 */
         .extension-item { cursor: pointer; transition: transform 160ms ease, box-shadow 160ms ease; }
@@ -79,27 +81,58 @@
 
             <main class="grid gap-4">
                 <section id="panel-users" class="panel-card glass-card overflow-hidden rounded-[28px] border border-slate-200/70 shadow-[0_10px_40px_rgba(15,23,42,0.06)]">
-                    <div class="flex items-center justify-between border-b border-slate-200/70 bg-slate-50/70 px-4 py-4 sm:px-6">
-                        <div>
-                            <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">账号与 IP 映射</p>
-                            <p class="mt-1 text-xs text-slate-400">查看当前在线状态并快速删除异常账号</p>
+                    <div class="border-b border-slate-200/70 bg-slate-50/70 px-4 py-4 sm:px-6">
+                        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                            <div>
+                                <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">账号与 IP 映射</p>
+                                <p class="mt-1 text-xs text-slate-400">查看当前在线状态并快速删除异常账号</p>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button onclick="toggleUsersPanel()" id="toggleUsersPanelBtn" class="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-100">收起</button>
+                                <button onclick="refreshUsers()" class="text-sm font-semibold text-sky-600 transition hover:text-sky-500">刷新</button>
+                            </div>
                         </div>
-                        <button onclick="refreshUsers()" class="text-sm font-semibold text-sky-600 transition hover:text-sky-500">刷新</button>
+                        <div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <input id="userSearchInput" type="text" placeholder="搜索用户名或 IP" class="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-sky-500 sm:max-w-xs">
+                            <div class="flex items-center gap-2">
+                                <label class="text-xs text-slate-500">每页</label>
+                                <select id="userPageSizeSelect" class="rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-700 outline-none">
+                                    <option value="10">10</option>
+                                    <option value="20" selected>20</option>
+                                    <option value="50">50</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full border-collapse text-left text-sm">
-                            <thead>
-                                <tr class="border-b border-slate-100 bg-white/70 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                                    <th class="px-4 py-3 sm:px-6">状态</th>
-                                    <th class="px-4 py-3 sm:px-6">用户名</th>
-                                    <th class="px-4 py-3 sm:px-6">局域网 IP</th>
-                                    <th class="px-4 py-3 text-right sm:px-6">操作</th>
-                                </tr>
-                            </thead>
-                            <tbody id="userTableBody" class="divide-y divide-slate-100 text-sm text-slate-600">
-                                <tr><td colspan="4" class="px-4 py-12 text-center text-slate-400 sm:px-6">正在加载用户列表…</td></tr>
-                            </tbody>
-                        </table>
+                    <div id="usersContentPanel">
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full border-collapse text-left text-sm">
+                                <thead>
+                                    <tr class="border-b border-slate-100 bg-white/70 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                                        <th class="px-4 py-3 sm:px-6">状态</th>
+                                        <th class="px-4 py-3 sm:px-6">用户名</th>
+                                        <th class="px-4 py-3 sm:px-6">局域网 IP</th>
+                                        <th class="px-4 py-3 text-right sm:px-6">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="userTableBody" class="divide-y divide-slate-100 text-sm text-slate-600">
+                                    <tr><td colspan="4" class="px-4 py-12 text-center text-slate-400 sm:px-6">正在加载用户列表…</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="userPaginationBar" class="flex flex-col gap-3 border-t border-slate-100 bg-white/70 px-4 py-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6"></div>
+                        <div class="border-t border-slate-200/70 bg-slate-50/70 px-4 py-4 sm:px-6">
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">修改管理员密码</h3>
+                                <p class="mt-1 text-xs text-slate-500">修改管理员登录密码，旧密码验证通过后生效。</p>
+                            </div>
+                            <div class="mt-4 space-y-3">
+                                <input id="oldAdminPassword" type="password" placeholder="请输入当前管理员密码" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-900">
+                                <input id="newAdminPassword" type="password" placeholder="请输入新的管理员密码" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-900">
+                                <input id="confirmAdminPassword" type="password" placeholder="请再次输入新的管理员密码" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-900">
+                                <button onclick="changeAdminPassword()" class="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500">保存密码</button>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -219,6 +252,11 @@
     <script>
         const adminTokenKey = 'lanchat_admin_token';
         let currentAdminToken = '';
+        let allUsersData = [];
+        let usersSearchText = '';
+        let usersCurrentPage = 1;
+        let usersPageSize = 20;
+        let usersPanelExpanded = true;
 
         function saveAdminToken(token) { localStorage.setItem(adminTokenKey, token); }
         function clearAdminToken() { localStorage.removeItem(adminTokenKey); currentAdminToken = ''; }
@@ -316,7 +354,7 @@
             document.querySelectorAll('.tab-btn').forEach((btn) => btn.classList.remove('active'));
             const activeButton = document.getElementById(`tabBtn-${tabName}`);
             if (activeButton) activeButton.classList.add('active');
-            moveTabIndicator(tabName);
+            requestAnimationFrame(() => moveTabIndicator(tabName));
             ['users', 'messages', 'system', 'extensions'].forEach((panel) => document.getElementById(`panel-${panel}`).classList.add('hidden'));
             document.getElementById(`panel-${tabName}`).classList.remove('hidden');
             if (tabName === 'users') refreshUsers();
@@ -328,24 +366,104 @@
             return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         }
 
+        function highlightMatch(text, keyword) {
+            const safeText = escapeHtml(text || '');
+            if (!keyword) return safeText;
+            const escapedKeyword = escapeHtml(keyword);
+            const pattern = new RegExp(`(${escapedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'ig');
+            return safeText.replace(pattern, '<mark class="rounded bg-amber-200 px-1 text-slate-900">$1</mark>');
+        }
+
+        function toggleUsersPanel() {
+            const panel = document.getElementById('usersContentPanel');
+            const btn = document.getElementById('toggleUsersPanelBtn');
+            if (!panel || !btn) return;
+            usersPanelExpanded = !usersPanelExpanded;
+            if (usersPanelExpanded) {
+                panel.classList.remove('hidden');
+                requestAnimationFrame(() => panel.style.maxHeight = `${panel.scrollHeight}px`);
+            } else {
+                panel.style.maxHeight = `${panel.scrollHeight}px`;
+                requestAnimationFrame(() => {
+                    panel.style.maxHeight = '0px';
+                });
+            }
+            btn.innerText = usersPanelExpanded ? '收起' : '展开';
+        }
+
+        function renderUsersTable() {
+            const tbody = document.getElementById('userTableBody');
+            const pagination = document.getElementById('userPaginationBar');
+            if (!tbody || !pagination) return;
+
+            const filtered = allUsersData.filter((u) => {
+                const keyword = usersSearchText.trim().toLowerCase();
+                if (!keyword) return true;
+                return `${u.username || ''} ${u.last_ip || ''}`.toLowerCase().includes(keyword);
+            });
+
+            const total = filtered.length;
+            const totalPages = Math.max(1, Math.ceil(total / usersPageSize));
+            if (usersCurrentPage > totalPages) usersCurrentPage = totalPages;
+            const start = (usersCurrentPage - 1) * usersPageSize;
+            const end = start + usersPageSize;
+            const pageItems = filtered.slice(start, end);
+
+            if (!Array.isArray(allUsersData) || allUsersData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-10 text-center text-slate-400 sm:px-6">目前暂无注册用户</td></tr>';
+                pagination.innerHTML = '';
+                return;
+            }
+
+            if (pageItems.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-10 text-center text-slate-400 sm:px-6">没有匹配到用户</td></tr>';
+                pagination.innerHTML = '';
+                return;
+            }
+
+            tbody.innerHTML = pageItems.map((u) => `
+                <tr class="hover:bg-slate-50/80 transition">
+                    <td class="px-4 py-4 sm:px-6">${u.is_online ? '<span class="inline-flex items-center gap-1.5 text-emerald-600 font-semibold"><span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>在线</span>' : '<span class="text-slate-400">离线</span>'}</td>
+                    <td class="px-4 py-4 font-semibold text-slate-800 sm:px-6">${highlightMatch(u.username, usersSearchText)}</td>
+                    <td class="px-4 py-4 font-mono text-slate-500 sm:px-6">${highlightMatch(u.last_ip || '—', usersSearchText)}</td>
+                    <td class="px-4 py-4 text-right sm:px-6"><button onclick='banUser(${JSON.stringify(u.username)})' class="rounded-lg bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-100">删除账户</button></td>
+                </tr>
+            `).join('');
+
+            const pageButtons = [];
+            const maxVisiblePages = 5;
+            let startPage = Math.max(1, usersCurrentPage - Math.floor(maxVisiblePages / 2));
+            let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+            if (endPage - startPage + 1 < maxVisiblePages) {
+                startPage = Math.max(1, endPage - maxVisiblePages + 1);
+            }
+            for (let p = startPage; p <= endPage; p++) {
+                pageButtons.push(`<button onclick="changeUsersPage(${p})" class="rounded-full px-2.5 py-1.5 text-xs font-semibold transition ${p === usersCurrentPage ? 'bg-sky-600 text-white shadow-sm' : 'border border-slate-200 text-slate-600 hover:bg-slate-100'}">${p}</button>`);
+            }
+
+            pagination.innerHTML = `
+                <div>共 ${total} 位用户，当前显示 ${start + 1}-${Math.min(end, total)} 位</div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button onclick="changeUsersPage(${Math.max(1, usersCurrentPage - 1)})" class="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold transition ${usersCurrentPage === 1 ? 'cursor-not-allowed text-slate-300' : 'text-slate-600 hover:bg-slate-100'}" ${usersCurrentPage === 1 ? 'disabled' : ''}>上一页</button>
+                    ${pageButtons.join('')}
+                    <button onclick="changeUsersPage(${Math.min(totalPages, usersCurrentPage + 1)})" class="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold transition ${usersCurrentPage === totalPages ? 'cursor-not-allowed text-slate-300' : 'text-slate-600 hover:bg-slate-100'}" ${usersCurrentPage === totalPages ? 'disabled' : ''}>下一页</button>
+                </div>
+            `;
+        }
+
+        function changeUsersPage(page) {
+            usersCurrentPage = page;
+            renderUsersTable();
+        }
+
         async function refreshUsers() {
             if (!currentAdminToken) return;
             try {
                 const response = await fetch(`/api/admin/users`, { headers: { 'Authorization': 'Bearer ' + currentAdminToken } });
                 const data = await response.json();
-                const tbody = document.getElementById('userTableBody');
-                if (!Array.isArray(data) || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-10 text-center text-slate-400 sm:px-6">目前暂无注册用户</td></tr>';
-                    return;
-                }
-                tbody.innerHTML = data.map((u) => `
-                    <tr class="hover:bg-slate-50/80 transition">
-                        <td class="px-4 py-4 sm:px-6">${u.is_online ? '<span class="inline-flex items-center gap-1.5 text-emerald-600 font-semibold"><span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>在线</span>' : '<span class="text-slate-400">离线</span>'}</td>
-                        <td class="px-4 py-4 font-semibold text-slate-800 sm:px-6">${escapeHtml(u.username)}</td>
-                        <td class="px-4 py-4 font-mono text-slate-500 sm:px-6">${escapeHtml(u.last_ip || '—')}</td>
-                        <td class="px-4 py-4 text-right sm:px-6"><button onclick="banUser(${JSON.stringify(u.username)})" class="rounded-lg bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-100">删除账户</button></td>
-                    </tr>
-                `).join('');
+                allUsersData = Array.isArray(data) ? data : [];
+                usersCurrentPage = 1;
+                renderUsersTable();
             } catch (e) { showToast('拉取用户列表失败', true); }
         }
 
@@ -353,7 +471,10 @@
             if (!confirm(`确认删除用户 ${name} 吗？`)) return;
             try {
                 const response = await fetch('/api/admin/delete-user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ admin_token: currentAdminToken, username: name }) });
-                if (!response.ok) throw new Error();
+                if (!response.ok) {
+                    const errText = await response.text().catch(() => '');
+                    throw new Error(errText || 'delete failed');
+                }
                 showToast(`已删除用户 ${name}`);
                 refreshUsers();
             } catch (e) { showToast('删除用户失败', true); }
@@ -398,6 +519,39 @@
                 showToast('公告发送成功');
                 input.value = '';
             } catch (e) { showToast('发送公告失败', true); }
+        }
+
+        async function changeAdminPassword() {
+            if (!currentAdminToken) return;
+            const oldPwd = document.getElementById('oldAdminPassword').value.trim();
+            const newPwd = document.getElementById('newAdminPassword').value.trim();
+            const confirmPwd = document.getElementById('confirmAdminPassword').value.trim();
+            if (!oldPwd || !newPwd || !confirmPwd) {
+                showToast('请填写完整密码信息', true);
+                return;
+            }
+            if (newPwd !== confirmPwd) {
+                showToast('两次输入的新密码不一致', true);
+                return;
+            }
+            try {
+                const response = await fetch('/api/admin/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ admin_token: currentAdminToken, old_password: oldPwd, new_password: newPwd }) });
+                if (!response.ok) {
+                    const text = await response.text().catch(() => '');
+                    throw new Error(text || 'change password failed');
+                }
+                const data = await response.json();
+                if (data.token) {
+                    currentAdminToken = data.token;
+                    saveAdminToken(data.token);
+                }
+                showToast('管理员密码已更新，Token 已刷新');
+                document.getElementById('oldAdminPassword').value = '';
+                document.getElementById('newAdminPassword').value = '';
+                document.getElementById('confirmAdminPassword').value = '';
+            } catch (e) {
+                showToast('修改密码失败', true);
+            }
         }
 
         document.getElementById('loginBtn').addEventListener('click', tryAdminLogin);
@@ -578,6 +732,22 @@
             // 加载后端扩展状态
             loadExtensionsFromServer();
             initProviderDropdown();
+            const searchInput = document.getElementById('userSearchInput');
+            const pageSizeSelect = document.getElementById('userPageSizeSelect');
+            if (searchInput) {
+                searchInput.addEventListener('input', (e) => {
+                    usersSearchText = e.target.value;
+                    usersCurrentPage = 1;
+                    renderUsersTable();
+                });
+            }
+            if (pageSizeSelect) {
+                pageSizeSelect.addEventListener('change', (e) => {
+                    usersPageSize = parseInt(e.target.value, 10) || 20;
+                    usersCurrentPage = 1;
+                    renderUsersTable();
+                });
+            }
             window.addEventListener('resize', () => {
                 const activeTab = document.querySelector('.tab-btn.active');
                 if (activeTab) {
@@ -585,11 +755,7 @@
                     moveTabIndicator(tabName);
                 }
             });
-            window.setInterval(() => {
-                const loginScreen = document.getElementById('loginScreen');
-                if (loginScreen.classList.contains('hidden')) {
-                    if (!document.getElementById('panel-users').classList.contains('hidden')) refreshUsers();
-                    if (!document.getElementById('panel-messages').classList.contains('hidden')) refreshMessages();
+            switchTab('users');
                 }
             }, 20000);
         });

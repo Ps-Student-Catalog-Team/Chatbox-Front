@@ -98,6 +98,7 @@ func main() {
 	http.HandleFunc("/api/admin/status", handleAdminStatus)
 	http.HandleFunc("/api/admin/toggle-mute", handleAdminToggleMute)
 	http.HandleFunc("/api/admin/broadcast", handleAdminBroadcast)
+	http.HandleFunc("/api/admin/change-password", handleAdminChangePassword)
 	http.HandleFunc("/api/extensions", handleGetExtensions)
 	http.HandleFunc("/api/admin/extensions", handleAdminSetExtensions)
 	http.HandleFunc("/api/ai/chat", handleAIChat)
@@ -225,6 +226,42 @@ func decodeUTF16BE(data []byte) string {
 	return string(utf16.Decode(u16s))
 }
 
+func saveAdminPasswordToConfig(password string) error {
+	data, err := os.ReadFile(adminConfigPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			content := "# 管理员密码配置\nadminpassword=" + password + "\n"
+			return os.WriteFile(adminConfigPath, []byte(content), 0644)
+		}
+		return err
+	}
+
+	text, err := decodeConfigText(data)
+	if err != nil {
+		return err
+	}
+
+	lines := strings.Split(text, "\n")
+	updated := false
+	for idx, line := range lines {
+		trim := strings.TrimSpace(line)
+		if strings.HasPrefix(trim, "adminpassword=") {
+			lines[idx] = "adminpassword=" + password
+			updated = true
+			break
+		}
+	}
+	if !updated {
+		lines = append(lines, "adminpassword="+password)
+	}
+
+	out := strings.Join(lines, "\n")
+	if !strings.HasSuffix(out, "\n") {
+		out += "\n"
+	}
+	return os.WriteFile(adminConfigPath, []byte(out), 0644)
+}
+
 func getAdminPassword() string {
 	password, err := readAdminPasswordFromConfig()
 	if err != nil {
@@ -234,6 +271,67 @@ func getAdminPassword() string {
 		return password
 	}
 	return adminSecret
+}
+
+func verifyAdminPassword(password string) bool {
+	if strings.EqualFold(password, getAdminPassword()) {
+		return true
+	}
+	var dbPwd string
+	if err := db.QueryRow("SELECT password FROM users WHERE username = ?", "admin").Scan(&dbPwd); err == nil {
+		return strings.EqualFold(dbPwd, password)
+	}
+	return false
+}
+
+func handleAdminChangePassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		return
+	}
+	if !checkAdminSecret(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	var req struct {
+		OldPassword string `json:"old_password"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	req.OldPassword = strings.TrimSpace(req.OldPassword)
+	req.NewPassword = strings.TrimSpace(req.NewPassword)
+	if req.OldPassword == "" || req.NewPassword == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if !verifyAdminPassword(req.OldPassword) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if err := saveAdminPasswordToConfig(req.NewPassword); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	adminSecret = req.NewPassword
+
+	res, err := db.Exec("UPDATE users SET password = ? WHERE username = ?", req.NewPassword, "admin")
+	if err == nil {
+		if affected, _ := res.RowsAffected(); affected == 0 {
+			_, _ = db.Exec("INSERT OR IGNORE INTO users (username, password) VALUES (?, ?)", "admin", req.NewPassword)
+		}
+	}
+
+	newToken := generateToken()
+	_ = saveSessionToken("admin", newToken)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "token": newToken})
 }
 
 func getLocalIP() (string, bool) {
