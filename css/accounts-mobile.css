@@ -1,5 +1,13 @@
 /* Mobile CSS - 账户管理页手机版高级样式 */
 
+@font-face {
+    font-family: 'Kca';
+    src: url('../ttf/kca.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
 * {
     margin: 0;
     padding: 0;

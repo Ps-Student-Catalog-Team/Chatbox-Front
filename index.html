@@ -4,8 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0, user-scalable=yes">
     <meta name="theme-color" content="#ffffff">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="icon" href="/photos/ico/favicon.ico" type="image/x-icon">
     <title>局域网通讯 | 公共聊天室</title>
     <script src="./js/viewport-adapter.js"></script>
     <script src="./js/tailwind.browser.js"></script>
@@ -15,6 +19,13 @@
     <!-- 根据设备自动加载对应 CSS -->
     <link rel="stylesheet" href="./css/style-desktop.css" media="(min-width: 768px)">
     <link rel="stylesheet" href="./css/style-mobile.css" media="(max-width: 767px)">
+    <script>
+        window.addEventListener('pageshow', function(event) {
+            if (event.persisted) {
+                window.location.reload();
+            }
+        });
+    </script>
 </head>
 <body class="bg-slate-100 w-full flex items-center justify-center font-sans antialiased select-none" style="height: 100dvh; height: 100vh;">
 
@@ -189,34 +200,53 @@
             pointer-events: auto;
         }
 
-        .reply-option.mobile {
-            left: auto;
-            right: 0;
-            top: auto;
-            bottom: calc(100% - 38px);
-            transform: translateY(-10px);
+        .chat-bubble {
+            touch-action: manipulation;
+            -webkit-user-select: none;
+            position: relative;
         }
 
-        .reply-option.mobile.show {
+        .reply-option.mobile,
+        .withdraw-option.mobile {
+            position: absolute;
+            right: 0;
+            top: 100%;
+            margin-top: 8px;
+            width: auto;
+            min-width: 72px;
+            white-space: nowrap;
+            z-index: 20;
+            opacity: 0;
+            pointer-events: none;
             transform: translateY(0);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .reply-option.mobile.show,
+        .withdraw-option.mobile.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .reply-option.mobile,
+        .withdraw-option.mobile {
+            padding: 0.55rem 0.95rem;
+            font-size: 0.82rem;
+            border-radius: 999px;
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
+        }
+
+        .withdraw-option.mobile + .reply-option.mobile,
+        .reply-option.mobile + .withdraw-option.mobile {
+            top: calc(100% + 42px);
         }
 
         .withdraw-option.show {
             opacity: 1;
             transform: translateY(-50%) translateX(0);
             pointer-events: auto;
-        }
-
-        .withdraw-option.mobile {
-            left: auto;
-            right: 0;
-            top: auto;
-            bottom: 100%;
-            transform: translateY(-10px);
-        }
-
-        .withdraw-option.mobile.show {
-            transform: translateY(0);
         }
 
         .reply-state-box {
@@ -267,6 +297,7 @@
 
         .message-wrapper {
             position: relative;
+            overflow: visible;
         }
 
         .message-wrapper.target-highlight .chat-bubble {
@@ -2038,6 +2069,7 @@
             }
             const formData = new FormData();
             formData.append('image', file);
+            formData.append('target_type', activeTarget.type || 'private');
             try {
                 const response = await fetch(`${httpUri}/api/upload`, {
                     method: 'POST',

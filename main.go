@@ -71,6 +71,12 @@ func main() {
 	if err := os.MkdirAll("./uploads", 0755); err != nil {
 		log.Fatalf("无法创建上传目录: %v", err)
 	}
+	if err := os.MkdirAll("./uploads/public", 0755); err != nil {
+		log.Fatalf("无法创建公共上传目录: %v", err)
+	}
+	if err := os.MkdirAll("./uploads/private", 0755); err != nil {
+		log.Fatalf("无法创建私有上传目录: %v", err)
+	}
 
 	loadAdminConfig()
 	initDB()
@@ -78,6 +84,7 @@ func main() {
 
 	http.Handle("/", http.FileServer(http.Dir("./")))
 	http.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("./uploads"))))
+	http.Handle("/favicon.ico", http.FileServer(http.Dir("./photos/ico")))
 
 	http.HandleFunc("/ws", handleWebSocket)
 	http.HandleFunc("/api/upload", handleUpload)
@@ -2197,11 +2204,21 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
+	targetType := r.FormValue("target_type")
+	uploadDir := "./uploads"
+	if targetType == "public" {
+		uploadDir = "./uploads/public"
+	} else if targetType == "group" {
+		uploadDir = "./uploads/private"
+	} else {
+		uploadDir = "./uploads/private"
+	}
+
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	randBytes := make([]byte, 8)
 	_, _ = rand.Read(randBytes)
 	newFileName := fmt.Sprintf("%d_%s%s", time.Now().UnixNano(), hex.EncodeToString(randBytes), ext)
-	savePath := filepath.Join("./uploads", newFileName)
+	savePath := filepath.Join(uploadDir, newFileName)
 
 	out, err := os.Create(savePath)
 	if err != nil {
@@ -2212,7 +2229,15 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.Copy(out, file)
 
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]string{"url": "/uploads/" + newFileName})
+	urlPrefix := "/uploads"
+	if targetType == "public" {
+		urlPrefix = "/uploads/public"
+	} else if targetType == "group" {
+		urlPrefix = "/uploads/private"
+	} else {
+		urlPrefix = "/uploads/private"
+	}
+	_ = json.NewEncoder(w).Encode(map[string]string{"url": urlPrefix + "/" + newFileName})
 }
 
 func handleResetPassword(w http.ResponseWriter, r *http.Request) {

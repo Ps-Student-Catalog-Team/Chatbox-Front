@@ -3,11 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0, user-scalable=yes">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <link rel="icon" href="/photos/ico/favicon.ico" type="image/x-icon">
     <title>账户管理</title>
     <script src="./js/viewport-adapter.js"></script>
     <script src="./js/tailwind.js"></script>
     <link rel="stylesheet" href="./css/accounts-desktop.css" media="(min-width: 768px)">
     <link rel="stylesheet" href="./css/accounts-mobile.css" media="(max-width: 767px)">
+    <script>
+        window.addEventListener('pageshow', function(event) {
+            if (event.persisted) {
+                window.location.reload();
+            }
+        });
+    </script>
 </head>
 <body>
     <button class="btn-back" id="backBtn" onclick="goBack()">
