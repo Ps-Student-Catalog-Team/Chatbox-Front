@@ -920,6 +920,7 @@ func checkAdminSecret(r *http.Request) bool {
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		log.Printf("[WS] upgrade failed: %v, headers=%v", err, r.Header)
 		return
 	}
 	clientIP := getIP(r)
