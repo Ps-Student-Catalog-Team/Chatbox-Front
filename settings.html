@@ -21,16 +21,8 @@
             }
         });
     </script>
-    <style>
-        @font-face {
-            font-family: 'Kca';
-            src: url('./ttf/kca.ttf') format('truetype');
-            font-weight: 400;
-            font-style: normal;
-            font-display: swap;
-        }
-        body { font-family: 'Kca', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    </style>
+    <link rel="stylesheet" href="css/settings-desktop.css">
+    <link rel="stylesheet" href="css/settings-mobile.css" media="(max-width: 768px)">
 </head>
 <body class="bg-slate-100 min-h-screen font-sans antialiased text-slate-900">
     <div class="min-h-screen flex items-center justify-center p-4">
@@ -109,6 +101,70 @@
                                 <input id="toggleTitleBlink" type="checkbox" class="sr-only" onchange="updateNotificationSetting('enableTitleBlink', this.checked)">
                                 <span id="titleBlinkCircle" class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transform transition-transform"></span>
                             </label>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="personalizationSection" class="space-y-4 bg-slate-50 p-5 rounded-3xl border border-slate-100">
+                    <div>
+                        <h2 class="text-lg font-semibold text-slate-900">个性化设置</h2>
+                        <p class="text-sm text-slate-500">点选下面的项目来管理聊天背景和全局字体。</p>
+                    </div>
+
+                    <div class="flex gap-4">
+                        <button id="openBgBtn" onclick="togglePanel('bg')" class="flex-1 py-4 rounded-2xl bg-blue-600 text-white font-semibold text-lg">聊天背景</button>
+                        <button id="openFontBtn" onclick="togglePanel('font')" class="flex-1 py-4 rounded-2xl bg-slate-800 text-white font-semibold text-lg">全局字体</button>
+                    </div>
+
+                    <!-- 背景面板 -->
+                    <div id="bgPanel" class="mt-4 hidden collapsible-panel">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <button onclick="document.getElementById('personalBgInput').click()" class="px-4 py-2 bg-blue-600 text-white rounded-2xl">上传背景</button>
+                                <div class="text-sm text-slate-500">可见性：<label class="ml-2"><input type="radio" name="bgVisibility" value="private" checked> 私密</label><label class="ml-2"><input type="radio" name="bgVisibility" value="public"> 公开</label></div>
+                            </div>
+                            <button class="px-3 py-1 text-sm bg-slate-100 rounded" onclick="toggleCollapse('userBgContainer')">我的背景 ▾</button>
+                        </div>
+                        <input id="personalBgInput" type="file" accept="image/*" class="hidden" onchange="uploadAsset('personalBgInput','background')" />
+
+                        <div id="userBgContainer" class="mb-4">
+                            <div class="text-sm font-semibold text-slate-700 mb-2">我的背景</div>
+                            <div id="userBgList" class="flex flex-wrap gap-2"></div>
+                        </div>
+
+                        <div>
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="text-sm font-semibold text-slate-700">公共背景</div>
+                                <div class="flex items-center gap-2">
+                                    <button class="px-3 py-1 text-sm bg-slate-100 rounded" onclick="toggleCollapse('publicBgContainer')">折叠/展开</button>
+                                    <button class="px-3 py-1 text-sm bg-slate-100 rounded" onclick="openGallery(window.publicBgAssets, '公共背景')">全览并选择</button>
+                                </div>
+                            </div>
+                            <div id="publicBgContainer">
+                                <div id="publicBgList" class="flex flex-wrap gap-2 mb-4"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 字体面板 -->
+                    <div id="fontPanel" class="mt-4 hidden collapsible-panel">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <button onclick="document.getElementById('personalFontInput').click()" class="px-4 py-2 bg-blue-600 text-white rounded-2xl">上传字体</button>
+                                <div class="text-sm text-slate-500">可见性：<label class="ml-2"><input type="radio" name="fontVisibility" value="private" checked> 私密</label><label class="ml-2"><input type="radio" name="fontVisibility" value="public"> 公开</label></div>
+                            </div>
+                        </div>
+                        <input id="personalFontInput" type="file" accept=".ttf,.otf,.woff,.woff2" class="hidden" onchange="uploadAsset('personalFontInput','font')" />
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <div class="text-sm font-semibold text-slate-700 mb-2">我的字体</div>
+                                <div id="userFontList" class="flex flex-col gap-2"></div>
+                            </div>
+                            <div>
+                                <div class="text-sm font-semibold text-slate-700 mb-2">公共字体</div>
+                                <div id="publicFontList" class="flex flex-col gap-2"></div>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -289,6 +345,386 @@
             restoreUserInfo();
             NotificationManager.loadSettings();
             updateNotificationSettingsUI();
+            // 加载用户和公共的背景/字体资源
+            loadAssets();
+            // 恢复上次打开的面板
+            const last = localStorage.getItem('settings_open_panel');
+            if (last) setPanelState(last);
+        });
+
+        function getAuthToken() {
+            return localStorage.getItem(authTokenKey) || '';
+        }
+
+        // 切换个性化面板（bg 或 font），保证互斥展开并更新按钮样式
+        function togglePanel(which) {
+            const current = localStorage.getItem('settings_open_panel') || '';
+            if (current === which) {
+                setPanelState(null);
+            } else {
+                setPanelState(which);
+            }
+        }
+
+        function setPanelOpen(panelEl, open) {
+            if (!panelEl) return;
+            if (open) {
+                panelEl.classList.remove('hidden');
+                requestAnimationFrame(() => {
+                    panelEl.classList.add('open');
+                });
+                return;
+            }
+
+            panelEl.classList.remove('open');
+            // 若元素已处于 hidden，直接结束；否则延迟隐藏，避免卡住
+            const hideTimer = panelEl.dataset.hideTimer;
+            if (hideTimer) {
+                clearTimeout(Number(hideTimer));
+            }
+            const timer = setTimeout(() => {
+                panelEl.classList.add('hidden');
+                panelEl.removeAttribute('data-hide-timer');
+            }, 360);
+            panelEl.dataset.hideTimer = String(timer);
+        }
+
+        function setPanelState(which) {
+            const bgPanel = document.getElementById('bgPanel');
+            const fontPanel = document.getElementById('fontPanel');
+            const openBgBtn = document.getElementById('openBgBtn');
+            const openFontBtn = document.getElementById('openFontBtn');
+            if (!bgPanel || !fontPanel || !openBgBtn || !openFontBtn) return;
+
+            const isBg = which === 'bg';
+            const isFont = which === 'font';
+
+            setPanelOpen(bgPanel, isBg);
+            setPanelOpen(fontPanel, isFont);
+
+            // 按钮状态：激活与收起互斥
+            openBgBtn.classList.toggle('bg-blue-600', isBg);
+            openBgBtn.classList.toggle('bg-slate-200', !isBg);
+            openBgBtn.classList.toggle('text-white', isBg);
+            openBgBtn.classList.toggle('text-slate-700', !isBg);
+
+            openFontBtn.classList.toggle('bg-slate-800', isFont);
+            openFontBtn.classList.toggle('bg-slate-200', !isFont);
+            openFontBtn.classList.toggle('text-white', isFont);
+            openFontBtn.classList.toggle('text-slate-700', !isFont);
+
+            if (which) {
+                localStorage.setItem('settings_open_panel', which);
+            } else {
+                localStorage.removeItem('settings_open_panel');
+            }
+        }
+
+        async function uploadAsset(inputId, fileType) {
+            const input = document.getElementById(inputId);
+            if (!input || !input.files || input.files.length === 0) return;
+            const file = input.files[0];
+            if (!file) return;
+
+            const visibilityName = fileType === 'font' ? 'fontVisibility' : 'bgVisibility';
+            const visibility = document.querySelector(`input[name="${visibilityName}"]:checked`).value || 'private';
+
+            const form = new FormData();
+            form.append('file', file);
+            form.append('visibility', visibility);
+            form.append('username', localStorage.getItem(authUserKey) || 'anonymous');
+            form.append('file_type', fileType);
+
+            try {
+                const res = await fetch('/api/upload', { method: 'POST', body: form });
+                if (!res.ok) {
+                    showToast('上传失败', true);
+                    return;
+                }
+                const data = await res.json();
+                if (data && data.url) {
+                    showToast('上传成功');
+                    // 如果上传成功，自动将其设置为当前用户的背景/字体（私密或公开均可被设置）
+                    if (fileType === 'background') {
+                        await fetch('/api/user/background', {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${getAuthToken()}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url: data.url })
+                        });
+                    } else if (fileType === 'font') {
+                        await fetch('/api/user/font', {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${getAuthToken()}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url: data.url })
+                        });
+                    }
+                    // 刷新资源列表
+                    loadAssets();
+                }
+            } catch (err) {
+                console.error(err);
+                showToast('上传出错', true);
+            } finally {
+                input.value = '';
+            }
+        }
+
+        async function loadAssets() {
+            const username = localStorage.getItem(authUserKey) || '';
+            try {
+                const [pubBgRes, userBgRes, pubFontRes, userFontRes] = await Promise.all([
+                    fetch('/api/assets?scope=public&type=background'),
+                    fetch(`/api/assets?scope=user&username=${encodeURIComponent(username)}&type=background`),
+                    fetch('/api/assets?scope=public&type=font'),
+                    fetch(`/api/assets?scope=user&username=${encodeURIComponent(username)}&type=font`),
+                ]);
+                const pubBg = await pubBgRes.json().catch(() => ({assets:[]}));
+                const userBg = await userBgRes.json().catch(() => ({assets:[]}));
+                const pubFont = await pubFontRes.json().catch(() => ({assets:[]}));
+                const userFont = await userFontRes.json().catch(() => ({assets:[]}));
+
+                // 保存到全局以便画廊打开时使用
+                window.publicBgAssets = pubBg.assets || [];
+                window.userBgAssets = userBg.assets || [];
+                window.publicFontAssets = pubFont.assets || [];
+                window.userFontAssets = userFont.assets || [];
+
+                renderBgList('publicBgList', window.publicBgAssets);
+                renderBgList('userBgList', window.userBgAssets);
+                renderFontList('publicFontList', window.publicFontAssets);
+                renderFontList('userFontList', window.userFontAssets);
+            } catch (err) {
+                console.error('加载资源失败', err);
+            }
+        }
+
+        function renderBgList(containerId, assets) {
+            const c = document.getElementById(containerId);
+            if (!c) return;
+            c.innerHTML = '';
+            assets.forEach(url => {
+                const el = document.createElement('div');
+                el.className = 'w-24 h-16 bg-center bg-cover rounded-md border cursor-pointer';
+                el.style.backgroundImage = `url('${url}')`;
+                el.onclick = async () => {
+                    await fetch('/api/user/background', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${getAuthToken()}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url })
+                    });
+                    document.body.style.backgroundImage = `url('${url}')`;
+                    showToast('背景已应用');
+                };
+                // 右键打开原图预览
+                el.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    const win = window.open(url, '_blank');
+                    if (!win) showToast('弹窗被阻止，请允许弹窗以查看预览', true);
+                });
+                c.appendChild(el);
+            });
+        }
+
+        function renderFontList(containerId, assets) {
+            const c = document.getElementById(containerId);
+            if (!c) return;
+            // 回收此前生成的预览 blob URL，避免内存泄漏
+            revokeAllPreviewUrls();
+            c.innerHTML = '';
+            assets.forEach(url => {
+                const card = document.createElement('div');
+                card.className = 'p-3 rounded border flex items-center justify-between';
+                const lbl = document.createElement('div');
+                lbl.innerText = url.split('/').pop();
+                lbl.style.fontSize = '16px';
+                lbl.style.flex = '1';
+                const sample = document.createElement('div');
+                sample.innerText = '示例文本';
+                sample.className = 'px-2 py-1 text-sm';
+                sample.style.marginRight = '8px';
+                const btn = document.createElement('button');
+                btn.className = 'px-3 py-1 bg-slate-100 rounded text-sm';
+                btn.innerText = '使用';
+                btn.onclick = async () => {
+                    const fontName = 'userfont_' + Math.random().toString(36).slice(2,8);
+                    const srcUrl = await getUsableUrlForAsset(url);
+                    if (!srcUrl) { showToast('无法加载字体', true); return; }
+                    const style = document.createElement('style');
+                    const ext = (srcUrl.split('.').pop() || '').split('?')[0].toLowerCase();
+                    let fmt = 'truetype';
+                    if (ext === 'woff2') fmt = 'woff2';
+                    else if (ext === 'woff') fmt = 'woff';
+                    else if (ext === 'otf') fmt = 'opentype';
+                    else if (ext === 'ttf') fmt = 'truetype';
+                    style.innerText = `@font-face{font-family:'${fontName}';src: url('${srcUrl}') format('${fmt}');font-display:swap;}`;
+                    document.head.appendChild(style);
+                    await fetch('/api/user/font', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${getAuthToken()}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url })
+                    });
+                    showToast('字体已应用');
+                };
+                card.appendChild(lbl);
+                card.appendChild(sample);
+                card.appendChild(btn);
+                c.appendChild(card);
+
+                (async () => {
+                    const srcUrl = await getUsableUrlForAsset(url);
+                    if (!srcUrl) return;
+                    const previewName = 'pf_' + Math.random().toString(36).slice(2,8);
+                    const s = document.createElement('style');
+                    const ext2 = (srcUrl.split('.').pop() || '').split('?')[0].toLowerCase();
+                    let fmt2 = 'truetype';
+                    if (ext2 === 'woff2') fmt2 = 'woff2';
+                    else if (ext2 === 'woff') fmt2 = 'woff';
+                    else if (ext2 === 'otf') fmt2 = 'opentype';
+                    else if (ext2 === 'ttf') fmt2 = 'truetype';
+                    s.innerText = `@font-face{font-family:'${previewName}';src: url('${srcUrl}') format('${fmt2}');font-display:swap;}`;
+                    document.head.appendChild(s);
+                    try {
+                        await document.fonts.load(`16px ${previewName}`);
+                        sample.style.fontFamily = previewName + ', sans-serif';
+                    } catch (err) {
+                    }
+                })();
+            });
+        }
+
+        async function getUsableUrlForAsset(url) {
+            if (url.startsWith('/photos/uploads/') && !url.startsWith('/photos/uploads/userpublic/')) {
+                try {
+                    const token = getAuthToken();
+                    const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+                    if (!res.ok) return null;
+                    const blob = await res.blob();
+                    const obj = URL.createObjectURL(blob);
+                    window._createdPreviewUrls = window._createdPreviewUrls || [];
+                    window._createdPreviewUrls.push(obj);
+                    return obj;
+                } catch (err) { return null; }
+            }
+            return url;
+        }
+
+        function revokeAllPreviewUrls() {
+            if (window._createdPreviewUrls && window._createdPreviewUrls.length) {
+                window._createdPreviewUrls.forEach(u => {
+                    try { URL.revokeObjectURL(u); } catch (e) {}
+                });
+                window._createdPreviewUrls = [];
+            }
+        }
+
+        // 为每个字体条目注入 @font-face 以展示预览样式（异步加载）
+        function renderFontPreviews(containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            const cards = container.querySelectorAll('div');
+            Array.from(cards).forEach(async (card, idx) => {
+                const name = card.querySelector('div');
+                if (!name) return;
+                const fileName = name.innerText;
+                // 通过 DOM 找到对应 URL（存在于标签文本），尝试构造 URL
+                const urlParts = fileName.split('.');
+                // 找到原始 URL 在父级节点中（简化：从 loadAssets 时已构建完整卡片，因此跳过）
+            });
+        }
+    </script>
+    <!-- 画廊模态窗口：在页面内全览并选择背景 -->
+    <div id="galleryModal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
+        <div class="absolute inset-0 bg-black/50" onclick="closeGallery()"></div>
+        <div class="relative bg-white rounded-xl max-w-4xl w-full max-h-[80vh] overflow-auto p-4">
+            <div class="flex justify-between items-center mb-3">
+                <div id="galleryTitle" class="font-semibold">画廊</div>
+                <div class="flex items-center gap-2">
+                    <button onclick="closeGallery()" class="px-3 py-1 bg-slate-100 rounded">关闭</button>
+                </div>
+            </div>
+            <div id="galleryGrid" class="grid grid-cols-3 gap-3"></div>
+        </div>
+    </div>
+
+    <script>
+        function toggleCollapse(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (el.style.display === 'none' || getComputedStyle(el).display === 'none') {
+                el.style.display = '';
+            } else {
+                el.style.display = 'none';
+            }
+        }
+
+        async function openGallery(urls, title) {
+            if (!urls || !Array.isArray(urls)) urls = [];
+            await populateGallery(urls, title || '画廊');
+            document.getElementById('galleryModal').classList.remove('hidden');
+        }
+
+        async function populateGallery(urls, title) {
+            const grid = document.getElementById('galleryGrid');
+            const titleEl = document.getElementById('galleryTitle');
+            grid.innerHTML = '';
+            titleEl.innerText = title || '';
+            window._createdPreviewUrls = window._createdPreviewUrls || [];
+            // 回收之前的预览对象 URL，确保不会越来越多
+            // 但不要回收刚刚要使用的新 URL（它们会被加入并在 closeGallery 时回收）
+            // 调用 revokeAllPreviewUrls 以清理先前生成的 blob URLs
+            revokeAllPreviewUrls();
+            for (const url of urls) {
+                const cell = document.createElement('div');
+                cell.className = 'cursor-pointer';
+                const img = document.createElement('img');
+                img.className = 'w-full h-40 object-cover rounded';
+                let src = url;
+                if (url.startsWith('/photos/uploads/') && !url.startsWith('/photos/uploads/userpublic/')) {
+                    const u = await getUsableUrlForAsset(url);
+                    if (u) {
+                        src = u;
+                        window._createdPreviewUrls.push(u);
+                    }
+                }
+                img.src = src;
+                img.onload = () => img.classList.add('loaded');
+                img.onerror = () => img.classList.add('error');
+                img.onclick = async () => {
+                    try {
+                        await fetch('/api/user/background', {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${getAuthToken()}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url })
+                        });
+                        document.body.style.backgroundImage = `url('${src}')`;
+                        showToast('背景已应用');
+                        closeGallery();
+                    } catch (err) {
+                        console.error(err);
+                        showToast('应用背景失败', true);
+                    }
+                };
+                cell.appendChild(img);
+                grid.appendChild(cell);
+            }
+        }
+
+        function closeGallery() {
+            const m = document.getElementById('galleryModal');
+            if (!m) return;
+            m.classList.add('hidden');
+            // 回收临时 blob URL
+            if (window._createdPreviewUrls && window._createdPreviewUrls.length) {
+                window._createdPreviewUrls.forEach(u => {
+                    try { URL.revokeObjectURL(u); } catch (e) {}
+                });
+                window._createdPreviewUrls = [];
+            }
+        }
+
+        // 页面卸载时清理 blob URLs
+        window.addEventListener('beforeunload', () => {
+            try { revokeAllPreviewUrls(); } catch (e) {}
         });
     </script>
 </body>

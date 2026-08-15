@@ -1,0 +1,37 @@
+@font-face {
+    font-family: 'Kca';
+    src: url('../ttf/kca.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+html, body {
+    font-family: 'Kca', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* Desktop-specific helpers for settings page */
+.settings-container {
+    max-width: 768px; /* matches .max-w-2xl roughly */
+}
+
+/* Ensure inputs and buttons have consistent sizing on desktop */
+input[type="text"], button {
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Collapsible panel animation for settings panels */
+.collapsible-panel {
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition: max-height 320ms ease, opacity 220ms ease, padding 220ms ease;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+.collapsible-panel.open {
+    max-height: 1200px; /* large enough for content */
+    opacity: 1;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+}

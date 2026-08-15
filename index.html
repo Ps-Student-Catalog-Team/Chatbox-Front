@@ -203,6 +203,7 @@
         .chat-bubble {
             touch-action: manipulation;
             -webkit-user-select: none;
+            user-select: none;
             position: relative;
         }
 
@@ -352,7 +353,7 @@
             border-color: #334155 !important;
         }
 
-        body.dark-mode .shadow-[0_1px_2px_rgba\(0,0,0,0\.02\)] {
+        body.dark-mode [class*="shadow-["] {
             box-shadow: 0 1px 2px rgba(255,255,255,0.08) !important;
         }
 
@@ -431,7 +432,7 @@
             border-color: #334155 !important;
         }
 
-        body.dark-mode .shadow-[0_1px_2px_rgba\(0,0,0,0\.02\)] {
+        body.dark-mode [class*="shadow-["] {
             box-shadow: 0 1px 2px rgba(255,255,255,0.08) !important;
         }
     </style>
@@ -877,7 +878,7 @@
             "public:global": []
         };  
 
-        const wsUri = "ws://" + window.location.host + "/ws";
+        const wsUri = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws';
         const httpUri = window.location.protocol + "//" + window.location.host;
 
         function authHeaders() {
@@ -1027,6 +1028,22 @@
                             }
                             loadAvatarConfig();
                             applyUserAvatar();
+                            // 自动加载并应用用户背景与字体（支持私有资源通过授权访问）
+                            (async () => {
+                                try {
+                                    const token = data.token || localStorage.getItem(authTokenKey) || '';
+                                    if (!token) return;
+                                    const res = await fetch('/api/user/info', { headers: { 'Authorization': `Bearer ${token}` } });
+                                    if (!res.ok) return;
+                                    const info = await res.json();
+                                    if (info.background_url) {
+                                        await applyBackgroundUrl(info.background_url, token);
+                                    }
+                                    if (info.font_url) {
+                                        await applyFontUrl(info.font_url, token);
+                                    }
+                                } catch (err) { console.warn('加载用户资产失败', err); }
+                            })();
                             document.getElementById('loginPanel').classList.add('hidden');
                             document.getElementById('mainApp').classList.remove('hidden');
                             selectActiveChat('public', 'global', '公共聊天室');
@@ -1154,6 +1171,50 @@
                 wsOpen = false;
                 console.error("WebSocket错误", err); 
             };
+        }
+
+        async function fetchProtectedResourceAsBlobUrl(url, token) {
+            try {
+                const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (!res.ok) throw new Error('fetch failed ' + res.status);
+                const blob = await res.blob();
+                return URL.createObjectURL(blob);
+            } catch (err) {
+                console.warn('fetchProtectedResourceAsBlobUrl error', err);
+                return null;
+            }
+        }
+
+        async function applyBackgroundUrl(url, token) {
+            if (!url) return;
+            try {
+                if (url.startsWith('/photos/uploads/userpublic/') || url.startsWith('/uploads/') || url.startsWith('http')) {
+                    document.body.style.backgroundImage = `url('${url}')`;
+                    return;
+                }
+                if (url.startsWith('/photos/uploads/')) {
+                    const blobUrl = await fetchProtectedResourceAsBlobUrl(url, token);
+                    if (blobUrl) document.body.style.backgroundImage = `url('${blobUrl}')`;
+                    return;
+                }
+                // fallback
+                document.body.style.backgroundImage = `url('${url}')`;
+            } catch (err) { console.warn('applyBackgroundUrl error', err); }
+        }
+
+        async function applyFontUrl(url, token) {
+            if (!url) return;
+            try {
+                let fontSrc = url;
+                if (url.startsWith('/photos/uploads/') && !url.startsWith('/photos/uploads/userpublic/')) {
+                    const blobUrl = await fetchProtectedResourceAsBlobUrl(url, token);
+                    if (blobUrl) fontSrc = blobUrl;
+                }
+                const fontName = 'userfont_' + Math.random().toString(36).slice(2,8);
+                const style = document.createElement('style');
+                style.innerText = `@font-face{font-family:${fontName};src:url(${fontSrc});}` + `body{font-family:${fontName}, sans-serif !important;}`;
+                document.head.appendChild(style);
+            } catch (err) { console.warn('applyFontUrl error', err); }
         }
 
         function performLogin() {

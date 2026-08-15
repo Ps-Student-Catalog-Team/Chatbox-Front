@@ -1,0 +1,56 @@
+/* Mobile-specific overrides for settings.html (max-width: 768px) */
+
+html, body {
+    -webkit-text-size-adjust: 100%;
+}
+
+/* Make the card use full width and increase inner padding for touch */
+.w-full.max-w-2xl, .settings-container, .w-full.max-w-2xl > .p-6 {
+    max-width: 100% !important;
+    border-radius: 18px !important;
+}
+
+/* Increase tap target size for toggles and buttons */
+button, .inline-flex.items-center, label.relative.inline-flex {
+    min-height: 44px;
+}
+
+input[type="text"] {
+    font-size: 16px;
+    padding: 12px 14px;
+}
+
+/* Make save button full width on narrow screens */
+@media (max-width: 480px) {
+    .grid.grid-cols-2.gap-3 button, .inline-flex.items-center.justify-center.rounded-2xl {
+        display: block;
+        width: 100%;
+    }
+    .flex.flex-col.gap-3.sm\:flex-row.sm\:items-center.sm\:justify-between {
+        flex-direction: column;
+        gap: 8px;
+        align-items: stretch;
+    }
+}
+
+/* Slightly larger spacing for mobile lists */
+.grid.gap-4 > div {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+}
+
+/* Collapsible panel animation (same as desktop) */
+.collapsible-panel {
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition: max-height 320ms ease, opacity 220ms ease, padding 220ms ease;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+.collapsible-panel.open {
+    max-height: 1200px;
+    opacity: 1;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+}

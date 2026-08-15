@@ -78,6 +78,11 @@ func main() {
 		log.Fatalf("无法创建私有上传目录: %v", err)
 	}
 
+	// 确保 photos/uploads 结构存在，用于用户可见的背景/字体存放
+	if err := os.MkdirAll("./photos/uploads/userpublic", 0755); err != nil {
+		log.Fatalf("无法创建 photos 公共上传目录: %v", err)
+	}
+
 	loadAdminConfig()
 	initDB()
 	defer db.Close()
@@ -85,13 +90,18 @@ func main() {
 	http.Handle("/", http.FileServer(http.Dir("./")))
 	http.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("./uploads"))))
 	http.Handle("/favicon.ico", http.FileServer(http.Dir("./photos/ico")))
+	// serve user-uploaded public/private assets (backgrounds/fonts)
+	// 静态托管改为受保护处理：公共目录仍然可公开访问，私有目录需要 token 验证
+	http.HandleFunc("/photos/uploads/", handleProtectedUploads)
 
 	http.HandleFunc("/ws", handleWebSocket)
 	http.HandleFunc("/api/upload", handleUpload)
+	http.HandleFunc("/api/assets", handleAssets)
 	http.HandleFunc("/api/user/info", handleUserInfo)
 	http.HandleFunc("/api/user/update", handleUserUpdate)
 	http.HandleFunc("/api/user/avatar", handleUserAvatar)
 	http.HandleFunc("/api/user/background", handleUserBackground)
+	http.HandleFunc("/api/user/font", handleUserFont)
 	http.HandleFunc("/api/reset-password", handleResetPassword)
 
 	http.HandleFunc("/api/messages", handleGetMessages)
@@ -654,6 +664,7 @@ func initDB() {
 	_, _ = db.Exec("INSERT OR IGNORE INTO users (username, password) VALUES ('admin', '123')")
 	_, _ = db.Exec("ALTER TABLE users ADD COLUMN signature TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE users ADD COLUMN background_url TEXT DEFAULT ''")
+	_, _ = db.Exec("ALTER TABLE users ADD COLUMN font_url TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE messages ADD COLUMN reply_to_id INTEGER")
 
 	// 扩展状态表（用于持久化扩展开关）
@@ -2196,22 +2207,39 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		return
 	}
-	file, header, err := r.FormFile("image")
+	// 支持字段名 file 或 image 上传
+	if err := r.ParseMultipartForm(64 << 20); err != nil {
+		// ignore parse error, try to continue
+	}
+	file, header, err := r.FormFile("file")
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "无效的文件"})
-		return
+		file, header, err = r.FormFile("image")
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "无效的文件"})
+			return
+		}
 	}
 	defer file.Close()
 
-	targetType := r.FormValue("target_type")
-	uploadDir := "./uploads"
-	if targetType == "public" {
-		uploadDir = "./uploads/public"
-	} else if targetType == "group" {
-		uploadDir = "./uploads/private"
+	visibility := strings.ToLower(strings.TrimSpace(r.FormValue("visibility"))) // public or private
+	username := strings.TrimSpace(r.FormValue("username"))
+	if username == "" {
+		username = "anonymous"
+	}
+
+	// 存放到 photos/uploads 下：公开 -> userpublic，私密 -> photos/uploads/<username>
+	baseDir := "./photos/uploads"
+	var uploadDir string
+	if visibility == "public" {
+		uploadDir = filepath.Join(baseDir, "userpublic")
 	} else {
-		uploadDir = "./uploads/private"
+		uploadDir = filepath.Join(baseDir, username)
+	}
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "无法创建目录"})
+		return
 	}
 
 	ext := strings.ToLower(filepath.Ext(header.Filename))
@@ -2223,21 +2251,129 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	out, err := os.Create(savePath)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "无法保存文件"})
 		return
 	}
 	defer out.Close()
-	_, _ = io.Copy(out, file)
-
-	w.WriteHeader(http.StatusOK)
-	urlPrefix := "/uploads"
-	if targetType == "public" {
-		urlPrefix = "/uploads/public"
-	} else if targetType == "group" {
-		urlPrefix = "/uploads/private"
-	} else {
-		urlPrefix = "/uploads/private"
+	if _, err := io.Copy(out, file); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "写入文件失败"})
+		return
 	}
-	_ = json.NewEncoder(w).Encode(map[string]string{"url": urlPrefix + "/" + newFileName})
+
+	// 返回可访问的 URL
+	var url string
+	if visibility == "public" {
+		url = "/photos/uploads/userpublic/" + newFileName
+	} else {
+		url = "/photos/uploads/" + username + "/" + newFileName
+	}
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{"url": url})
+}
+
+// 受保护的静态文件访问：公开目录 (/photos/uploads/userpublic) 直接返回，
+// 私有目录 (/photos/uploads/<username>/...) 需要 Authorization: Bearer <token> 验证
+func handleProtectedUploads(w http.ResponseWriter, r *http.Request) {
+	// 请求的路径以 /photos/uploads/ 开头，由于路由是注册在该前缀下，获取相对路径
+	rel := strings.TrimPrefix(r.URL.Path, "/photos/uploads/")
+	// 如果请求以 userpublic/ 开头，直接返回静态文件
+	if strings.HasPrefix(rel, "userpublic/") {
+		filePath := filepath.Join("./photos/uploads", rel)
+		http.ServeFile(w, r, filePath)
+		return
+	}
+
+	// 私有资源：第一段应该是用户名
+	parts := strings.SplitN(rel, "/", 2)
+	if len(parts) < 2 {
+		http.NotFound(w, r)
+		return
+	}
+	username := parts[0]
+	// 通过 token 验证请求者是否为同一用户或管理员
+	token := getTokenFromHeader(r)
+	if token == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	reqUser, err := getUsernameByToken(token)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	if reqUser != username {
+		// 非资源拥有者，拒绝访问
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	// 构造实际文件路径并返回
+	filePath := filepath.Join("./photos/uploads", rel)
+	http.ServeFile(w, r, filePath)
+}
+
+// 列出可用的用户或公共资产（背景图 / 字体）
+func handleAssets(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		return
+	}
+	scope := r.URL.Query().Get("scope") // public or user
+	username := r.URL.Query().Get("username")
+	fileType := strings.ToLower(r.URL.Query().Get("type")) // optional: background|font
+
+	base := "./photos/uploads"
+	var dir string
+	var urlPrefix string
+	if scope == "user" {
+		if username == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "缺少用户名"})
+			return
+		}
+		dir = filepath.Join(base, username)
+		urlPrefix = "/photos/uploads/" + username + "/"
+	} else {
+		// 默认或 public
+		dir = filepath.Join(base, "userpublic")
+		urlPrefix = "/photos/uploads/userpublic/"
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		// 如果目录不存在，则返回空数组
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"assets": []string{}})
+		return
+	}
+
+	allowed := map[string]bool{}
+	if fileType == "font" {
+		for _, e := range []string{".ttf", ".otf", ".woff", ".woff2"} {
+			allowed[e] = true
+		}
+	} else if fileType == "background" {
+		for _, e := range []string{".jpg", ".jpeg", ".png", ".gif", ".webp"} {
+			allowed[e] = true
+		}
+	}
+
+	var assets []string
+	for _, ent := range entries {
+		if ent.IsDir() {
+			continue
+		}
+		name := ent.Name()
+		if len(allowed) > 0 {
+			if !allowed[strings.ToLower(filepath.Ext(name))] {
+				continue
+			}
+		}
+		assets = append(assets, urlPrefix+name)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"assets": assets})
 }
 
 func handleResetPassword(w http.ResponseWriter, r *http.Request) {
@@ -2474,8 +2610,8 @@ func handleUserInfo(w http.ResponseWriter, r *http.Request) {
 		username = u
 	}
 
-	var avatar, signature, background string
-	err := db.QueryRow("SELECT avatar_url, signature, background_url FROM users WHERE username = ?", username).Scan(&avatar, &signature, &background)
+	var avatar, signature, background, font string
+	err := db.QueryRow("SELECT avatar_url, signature, background_url, font_url FROM users WHERE username = ?", username).Scan(&avatar, &signature, &background, &font)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			w.WriteHeader(http.StatusNotFound)
@@ -2491,6 +2627,7 @@ func handleUserInfo(w http.ResponseWriter, r *http.Request) {
 		"avatar_url":     avatar,
 		"signature":      signature,
 		"background_url": background,
+		"font_url":       font,
 	})
 }
 
@@ -2614,6 +2751,28 @@ func handleUserBackground(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 支持两种用法：
+	// 1) 以 multipart/form-data 上传文件（保持兼容旧用法）
+	// 2) 以 application/json 传入 { "url": "..." } 来设置已上传的文件 URL
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "application/json") {
+		var payload struct {
+			URL string `json:"url"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if payload.URL == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		_, _ = db.Exec("UPDATE users SET background_url = ? WHERE username = ?", payload.URL, user)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"url": payload.URL})
+		return
+	}
+
 	file, header, err := r.FormFile("background")
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -2639,4 +2798,42 @@ func handleUserBackground(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"url": url})
+}
+
+func handleUserFont(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		return
+	}
+	token := getTokenFromHeader(r)
+	if token == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	user, err := getUsernameByToken(token)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "application/json") {
+		var payload struct {
+			URL string `json:"url"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if payload.URL == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		_, _ = db.Exec("UPDATE users SET font_url = ? WHERE username = ?", payload.URL, user)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"url": payload.URL})
+		return
+	}
+
+	// 不支持直接上传字体文件到此接口；请先使用 /api/upload 上传，然后用 JSON 调用此接口设置 URL
+	w.WriteHeader(http.StatusBadRequest)
 }
