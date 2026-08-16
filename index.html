@@ -20,6 +20,10 @@
     <link rel="stylesheet" href="./css/style-desktop.css" media="(min-width: 768px)">
     <link rel="stylesheet" href="./css/style-mobile.css" media="(max-width: 767px)">
     <script>
+        document.oncontextmenu = function (e) {
+            e.preventDefault();
+        };
+
         window.addEventListener('pageshow', function(event) {
             if (event.persisted) {
                 window.location.reload();
@@ -657,11 +661,30 @@
             <div>
                 <label class="block text-xs font-medium text-slate-500 mb-1">好友账号</label>
                 <input id="newFriendNameInput" type="text" placeholder="请输入好友账号名称" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">验证信息</label>
+                <textarea id="newFriendMessageInput" rows="3" maxlength="200" placeholder="例如：你好，我是xxx，想加你为好友，想一起交流。" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"></textarea>
                 <p id="addFriendError" class="text-xs text-red-500 min-h-[16px] mt-2"></p>
             </div>
             <div class="flex justify-end space-x-2 pt-2 border-t border-slate-100">
                 <button onclick="toggleAddFriendModal(false)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer font-medium">取消</button>
-                <button onclick="submitAddFriend()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs cursor-pointer font-medium">添加好友</button>
+                <button onclick="submitAddFriend()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs cursor-pointer font-medium">发送申请</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 验证消息/好友申请历史模态框 -->
+    <div id="friendRequestModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0">
+        <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-[420px] space-y-4 max-h-[80vh] overflow-y-auto modal-appear">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-bold text-slate-800">好友验证消息</h3>
+                <button onclick="toggleFriendRequestModal(false)" class="text-xl text-slate-400 hover:text-slate-600 cursor-pointer">✕</button>
+            </div>
+            <div id="friendRequestSummary" class="text-xs text-slate-500"></div>
+            <div id="friendRequestList" class="space-y-3"></div>
+            <div class="flex justify-end pt-2 border-t border-slate-100">
+                <button onclick="toggleFriendRequestModal(false)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer font-medium">关闭</button>
             </div>
         </div>
     </div>
@@ -870,9 +893,11 @@
         let activeTarget = null;
         let currentAvatar = { type: 'text', text: 'U', color: '#2563eb', url: '' };
         let replyingTo = null; // 当前要回复的消息
+        let messageContextMenu = null;
         
         let globalFriends = [];
         let globalGroups = [];
+        let globalFriendRequests = [];
         
         let cacheMessages = {
             "public:global": []
@@ -1064,6 +1089,7 @@
                         case "sync_data":
                             globalFriends = data.friends || [];
                             globalGroups = data.groups || [];
+                            globalFriendRequests = data.friend_requests || [];
                             // 保存owner信息（用于权限检查）
                             globalGroups.forEach(g => {
                                 if (data.groups && data.groups.length > 0) {
@@ -1071,12 +1097,26 @@
                                     if (fullData) g.owner = fullData.owner;
                                 }
                             });
+                            renderFriendRequestModal();
                             // 先自动加载所有私聊和群聊的历史消息，然后再更新侧边栏
                             loadAllPrivateChatHistory().then(() => {
                                 renderSidebarList();
                             }).catch(() => {
                                 renderSidebarList();
                             });
+                            break;
+                        case "add_friend_ok":
+                            alert(data.content || "好友申请已发送，等待对方审核");
+                            break;
+                        case "add_friend_err":
+                            alert(data.content || "发送好友申请失败");
+                            break;
+                        case "friend_request_reviewed":
+                            if (data.action === 'approve') {
+                                alert('已通过好友申请');
+                            } else if (data.action === 'reject') {
+                                alert('已拒绝好友申请');
+                            }
                             break;
                         case "create_group_ok":
                             const newGroup = {
@@ -1275,6 +1315,8 @@
             const content = document.getElementById('listContent');
             content.innerHTML = "";
 
+            const pendingIncomingCount = globalFriendRequests.filter(r => r.to_user === currentUser && r.status === 'pending').length;
+
             if (currentTab === "chats") {
                 title.innerText = "最近会话";
                 actions.innerHTML = "";
@@ -1340,11 +1382,78 @@
                         <button onclick="toggleGroupModal(true)" class="text-xs bg-white px-2.5 py-1.5 rounded-lg shadow-sm border border-slate-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300 hover:shadow-md transition cursor-pointer button-hover-lift font-medium">👥 群组</button>
                     </div>
                 `;
-                if (globalFriends.length === 0 && globalGroups.length === 0) {
+
+                const unreadRequestCount = globalFriendRequests.filter(r => r.to_user === currentUser && r.status === 'pending').length;
+                const totalRequestCount = globalFriendRequests.filter(r => r.to_user === currentUser || r.from_user === currentUser).length;
+
+                const requestCard = document.createElement('div');
+                requestCard.className = `relative p-3 rounded-2xl cursor-pointer transition-all duration-200 mb-3 border transform hover:-translate-y-0.5 ${unreadRequestCount > 0 ? 'bg-violet-50 border-violet-200 shadow-[0_8px_20px_rgba(139,92,246,0.08)]' : 'hover:bg-slate-100 border-slate-200 bg-white shadow-sm'}`;
+                requestCard.innerHTML = `
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <div class="relative w-9 h-9 rounded-xl flex items-center justify-center ${unreadRequestCount > 0 ? 'bg-violet-600 text-white shadow-md shadow-violet-200' : 'bg-slate-100 text-slate-600'} text-base">
+                                📬
+                                ${unreadRequestCount > 0 ? '<span class="absolute -top-1 -right-1 block w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-white shadow-sm animate-pulse"></span>' : ''}
+                            </div>
+                            <div class="min-w-0">
+                                <div class="text-sm font-semibold truncate ${unreadRequestCount > 0 ? 'text-violet-700' : 'text-slate-700'}">好友验证</div>
+                                <div class="text-[10px] ${unreadRequestCount > 0 ? 'text-violet-500' : 'text-slate-500'}">
+                                    ${unreadRequestCount > 0 ? `待审核 ${unreadRequestCount} 人` : (totalRequestCount > 0 ? '查看申请记录' : '暂无待处理申请')}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="relative flex items-center z-10">
+                            <span class="inline-flex items-center justify-center min-w-[18px] h-5 px-1.5 text-[10px] font-semibold rounded-full ${unreadRequestCount > 0 ? 'bg-red-500 text-white shadow-sm' : 'bg-slate-200 text-slate-600'}">
+                                ${unreadRequestCount > 0 ? unreadRequestCount : totalRequestCount}
+                            </span>
+                        </div>
+                    </div>
+                `;
+                requestCard.onclick = () => {
+                    const redDot = requestCard.querySelector('.animate-pulse');
+                    if (redDot) {
+                        redDot.classList.remove('animate-pulse');
+                        redDot.classList.add('opacity-0');
+                        setTimeout(() => {
+                            redDot.remove();
+                            renderSidebarList();
+                        }, 150);
+                    }
+                    toggleFriendRequestModal(true);
+                };
+                content.appendChild(requestCard);
+
+                const hasRequestHistory = totalRequestCount > 0;
+                if (globalFriends.length === 0 && globalGroups.length === 0 && !hasRequestHistory) {
                     const emptyDiv = document.createElement('div');
                     emptyDiv.className = "text-center text-slate-400 text-xs py-8";
                     emptyDiv.innerText = "当前无好友或群组，可通过添加好友或创建群组开始。";
                     content.appendChild(emptyDiv);
+                }
+                if (hasRequestHistory) {
+                    const requestTitle = document.createElement('div');
+                    requestTitle.className = "text-xs font-semibold text-slate-500 uppercase tracking-[0.16em] px-2 pt-2 pb-2";
+                    requestTitle.innerText = "最近验证";
+                    content.appendChild(requestTitle);
+                    const previewRequests = globalFriendRequests.slice(0, 3);
+                    previewRequests.forEach(req => {
+                        const div = document.createElement('div');
+                        const isUnread = req.to_user === currentUser && req.status === 'pending';
+                        div.className = `p-3 rounded-2xl border mb-2 cursor-pointer transition ${isUnread ? 'bg-amber-50 border-amber-200 text-amber-700' : req.status === 'approved' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-rose-50 border-rose-200 text-rose-700'}`;
+                        const direction = req.to_user === currentUser ? '收到' : '发出';
+                        const statusText = req.status === 'pending' ? '待审核' : req.status === 'approved' ? '已通过' : '已拒绝';
+                        const senderName = req.to_user === currentUser ? req.from_user : req.to_user;
+                        div.innerHTML = `
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="font-medium">${senderName}</span>
+                                <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-white/70">${statusText}</span>
+                            </div>
+                            <div class="mt-1 text-[11px] opacity-80">${direction} · ${req.message || '未填写验证信息'}</div>
+                            ${isUnread ? '<span class="inline-block mt-2 w-2 h-2 rounded-full bg-red-500 align-middle"></span>' : ''}
+                        `;
+                        div.onclick = () => toggleFriendRequestModal(true);
+                        content.appendChild(div);
+                    });
                 }
                 if (globalFriends.length > 0) {
                     const friendsTitle = document.createElement('div');
@@ -1675,34 +1784,41 @@
                 }
                 const isMobile = window.innerWidth < 768;
 
-                let longPressTimer = null;
-                const showOptions = () => {
-                    if (isMe) {
-                        toggleWithdrawOption(wrapper, msg, isMobile);
-                    } else {
-                        toggleReplyOption(wrapper, msg, isMobile, true);  // 别人的消息，回复按钮在右边（已反转）
-                    }
-                };
-                const startLongPress = () => {
-                    longPressTimer = setTimeout(showOptions, 600);
-                };
-                const cancelLongPress = () => {
-                    if (longPressTimer) {
-                        clearTimeout(longPressTimer);
-                        longPressTimer = null;
-                    }
+                const openMessageMenu = (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    showMessageContextMenu(event, msg, wrapper, isMe, isMobile);
                 };
 
+                bubble.addEventListener('contextmenu', openMessageMenu);
                 bubble.addEventListener('click', (e) => {
-                    if (!isMobile) {
-                        e.stopPropagation();
-                        showOptions();
-                    }
+                    e.stopPropagation();
+                    hideMessageContextMenu();
                 });
-                bubble.addEventListener('touchstart', startLongPress);
-                bubble.addEventListener('touchend', cancelLongPress);
-                bubble.addEventListener('touchcancel', cancelLongPress);
-                bubble.addEventListener('touchmove', cancelLongPress);
+
+                if (isMobile) {
+                    let longPressTimer = null;
+                    const startLongPress = () => {
+                        longPressTimer = setTimeout(() => {
+                            showMessageContextMenu({
+                                preventDefault() {},
+                                stopPropagation() {},
+                                clientX: window.innerWidth / 2,
+                                clientY: window.innerHeight / 2
+                            }, msg, wrapper, isMe, true);
+                        }, 600);
+                    };
+                    const cancelLongPress = () => {
+                        if (longPressTimer) {
+                            clearTimeout(longPressTimer);
+                            longPressTimer = null;
+                        }
+                    };
+                    bubble.addEventListener('touchstart', startLongPress);
+                    bubble.addEventListener('touchend', cancelLongPress);
+                    bubble.addEventListener('touchcancel', cancelLongPress);
+                    bubble.addEventListener('touchmove', cancelLongPress);
+                }
             }
 
             wrapper.appendChild(bubble);
@@ -1778,51 +1894,97 @@
             }
         }
 
-        function toggleWithdrawOption(wrapper, msg, isMobile) {
+        function hideMessageContextMenu() {
+            if (messageContextMenu && messageContextMenu.parentElement) {
+                messageContextMenu.remove();
+            }
+            messageContextMenu = null;
+        }
+
+        function showMessageContextMenu(event, msg, wrapper, isMe, isMobile) {
+            hideMessageContextMenu();
             hideWithdrawOptions();
             hideReplyOptions();
-            const existing = wrapper.querySelector('.withdraw-option');
-            if (existing) {
-                existing.remove();
-            }
-            const option = document.createElement('button');
-            option.type = 'button';
-            option.className = 'withdraw-option';
-            if (isMobile) {
-                option.classList.add('mobile');
-            }
-            option.innerText = '撤回';
-            option.onclick = (e) => {
-                e.stopPropagation();
-                withdrawMessage(msg);
+
+            const menu = document.createElement('div');
+            menu.className = 'fixed z-[9999] min-w-[180px] rounded-2xl border border-slate-200 bg-white/95 shadow-[0_18px_48px_rgba(15,23,42,0.22)] backdrop-blur-md overflow-hidden animate-[fadeInContextMenu_0.12s_ease-out]';
+            menu.style.left = `${Math.min(window.innerWidth - 210, event.clientX)}px`;
+            menu.style.top = `${Math.min(window.innerHeight - 260, event.clientY)}px`;
+
+            const actions = [
+                { icon: '📋', label: '复制', shortcut: 'Ctrl+C', action: () => {
+                    const text = msg.content || '';
+                    if (text) {
+                        navigator.clipboard?.writeText(text).catch(() => {
+                            const ta = document.createElement('textarea');
+                            ta.value = text;
+                            document.body.appendChild(ta);
+                            ta.select();
+                            document.execCommand('copy');
+                            ta.remove();
+                        });
+                    }
+                    hideMessageContextMenu();
+                } },
+                { icon: '↩', label: '回复', shortcut: 'R', action: () => {
+                    startReply(msg);
+                    hideMessageContextMenu();
+                } },
+                { icon: isMe ? '🗑️' : '⛔', label: isMe ? '撤回' : '删除', shortcut: 'Del', action: () => {
+                    if (isMe) {
+                        withdrawMessage(msg);
+                    } else {
+                        alert('暂不支持删除他人消息');
+                    }
+                    hideMessageContextMenu();
+                } },
+                { icon: '⇄', label: '转发', shortcut: 'T', action: () => {
+                    alert('转发功能待实现');
+                    hideMessageContextMenu();
+                } }
+            ];
+
+            const separator = document.createElement('div');
+            separator.className = 'h-px w-full bg-slate-100';
+            menu.appendChild(separator);
+
+            actions.forEach((item, index) => {
+                const row = document.createElement('button');
+                row.type = 'button';
+                row.className = 'group flex w-full items-center justify-between gap-3 px-3 py-2.5 text-xs text-slate-700 hover:bg-slate-50 transition-colors duration-150';
+                row.innerHTML = `
+                    <span class="flex items-center gap-2 min-w-0">
+                        <span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-slate-100 text-[11px] text-slate-600 group-hover:bg-violet-100 group-hover:text-violet-600 transition-colors">${item.icon}</span>
+                        <span class="truncate">${item.label}</span>
+                    </span>
+                    <span class="text-[10px] text-slate-400 group-hover:text-slate-500">${item.shortcut}</span>
+                `;
+                row.onclick = (e) => {
+                    e.stopPropagation();
+                    item.action();
+                };
+                menu.appendChild(row);
+                if (index < actions.length - 1) {
+                    const divider = document.createElement('div');
+                    divider.className = 'mx-2 h-px bg-slate-100';
+                    menu.appendChild(divider);
+                }
+            });
+
+            document.body.appendChild(menu);
+            messageContextMenu = menu;
+
+            const closeOnClick = (e) => {
+                if (!menu.contains(e.target)) {
+                    hideMessageContextMenu();
+                    document.removeEventListener('click', closeOnClick);
+                }
             };
-            wrapper.appendChild(option);
-            requestAnimationFrame(() => option.classList.add('show'));
-            option._hideTimer = setTimeout(() => {
-                hideWithdrawOption(option);
-            }, 4000);
-            
-            // 在撤回按钮右边显示回复按钮
-            const existingReply = wrapper.querySelector('.reply-option');
-            if (existingReply) {
-                existingReply.remove();
-            }
-            const replyOption = document.createElement('button');
-            replyOption.type = 'button';
-            replyOption.className = 'reply-option';  // 自己的消息：将回复按钮显示在左侧（不添加 right 类）
-            if (isMobile) {
-                replyOption.classList.add('mobile');
-            }
-            replyOption.innerText = '回复';
-            replyOption.onclick = (e) => {
-                e.stopPropagation();
-                startReply(msg);
-            };
-            wrapper.appendChild(replyOption);
-            requestAnimationFrame(() => replyOption.classList.add('show'));
-            replyOption._hideTimer = setTimeout(() => {
-                hideReplyOption(replyOption);
-            }, 4000);
+            setTimeout(() => document.addEventListener('click', closeOnClick), 0);
+        }
+
+        function toggleWithdrawOption(wrapper, msg, isMobile) {
+            return;
         }
 
         function hideWithdrawOption(option) {
@@ -1859,31 +2021,7 @@
         }
 
         function toggleReplyOption(wrapper, msg, isMobile, isOwnMessage = false) {
-            hideReplyOptions();
-            hideWithdrawOptions();
-            const existing = wrapper.querySelector('.reply-option');
-            if (existing) {
-                existing.remove();
-            }
-            const option = document.createElement('button');
-            option.type = 'button';
-            option.className = 'reply-option';
-            if (isMobile) {
-                option.classList.add('mobile');
-            }
-            if (isOwnMessage) {
-                option.classList.add('right');
-            }
-            option.innerText = '回复';
-            option.onclick = (e) => {
-                e.stopPropagation();
-                startReply(msg);
-            };
-            wrapper.appendChild(option);
-            requestAnimationFrame(() => option.classList.add('show'));
-            option._hideTimer = setTimeout(() => {
-                hideReplyOption(option);
-            }, 4000);
+            return;
         }
 
         function hideReplyOption(option) {
@@ -2210,6 +2348,8 @@
             if (show) {
                 modal.classList.remove('hidden');
                 document.getElementById('newFriendNameInput').value = "";
+                document.getElementById('newFriendMessageInput').value = "";
+                error.className = 'text-xs text-red-500 min-h-[16px] mt-2';
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     error.innerText = "";
                 } else {
@@ -2221,9 +2361,102 @@
             }
         }
 
+        function toggleFriendRequestModal(show) {
+            const modal = document.getElementById('friendRequestModal');
+            if (!modal) return;
+            if (show) {
+                renderFriendRequestModal();
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        function renderFriendRequestModal() {
+            const summary = document.getElementById('friendRequestSummary');
+            const list = document.getElementById('friendRequestList');
+            if (!summary || !list) return;
+
+            const incomingPending = globalFriendRequests.filter(r => r.to_user === currentUser && r.status === 'pending');
+            summary.innerText = incomingPending.length > 0
+                ? `你有 ${incomingPending.length} 条待审核好友申请。`
+                : `共 ${globalFriendRequests.length} 条好友申请记录。`;
+
+            list.innerHTML = "";
+            if (globalFriendRequests.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'text-center text-xs text-slate-400 py-8';
+                empty.innerText = '暂无好友申请记录';
+                list.appendChild(empty);
+                return;
+            }
+
+            const sorted = [...globalFriendRequests].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+            sorted.forEach(req => {
+                const item = document.createElement('div');
+                item.className = 'rounded-xl border border-slate-200 bg-slate-50 p-3';
+
+                const top = document.createElement('div');
+                top.className = 'flex items-center justify-between gap-2 mb-2';
+                const role = req.to_user === currentUser ? '收到的申请' : '发出的申请';
+                const status = req.status === 'pending' ? '待审核' : req.status === 'approved' ? '已通过' : '已拒绝';
+                const statusClass = req.status === 'pending' ? 'bg-amber-100 text-amber-700' : req.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
+                const roleEl = document.createElement('div');
+                roleEl.className = 'text-[11px] font-semibold text-slate-700';
+                roleEl.innerText = `${role} · ${req.to_user === currentUser ? req.from_user : req.to_user}`;
+                const badge = document.createElement('span');
+                badge.className = `inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${statusClass}`;
+                badge.innerText = status;
+                top.appendChild(roleEl);
+                top.appendChild(badge);
+                item.appendChild(top);
+
+                const detail = document.createElement('div');
+                detail.className = 'text-[11px] text-slate-600 leading-5';
+                detail.innerText = req.message ? `验证信息：${req.message}` : '验证信息：未填写';
+                item.appendChild(detail);
+
+                const time = document.createElement('div');
+                time.className = 'mt-2 text-[10px] text-slate-400';
+                const createdAt = req.created_at ? new Date(req.created_at * 1000).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '时间未知';
+                time.innerText = `时间：${createdAt}`;
+                item.appendChild(time);
+
+                if (req.to_user === currentUser && req.status === 'pending') {
+                    const actionsRow = document.createElement('div');
+                    actionsRow.className = 'mt-3 flex gap-2';
+                    const approveBtn = document.createElement('button');
+                    approveBtn.type = 'button';
+                    approveBtn.className = 'flex-1 px-2 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-[11px] font-medium';
+                    approveBtn.innerText = '通过';
+                    approveBtn.onclick = () => reviewFriendRequest(req.id, 'approve');
+                    const rejectBtn = document.createElement('button');
+                    rejectBtn.type = 'button';
+                    rejectBtn.className = 'flex-1 px-2 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-[11px] font-medium';
+                    rejectBtn.innerText = '拒绝';
+                    rejectBtn.onclick = () => reviewFriendRequest(req.id, 'reject');
+                    actionsRow.appendChild(approveBtn);
+                    actionsRow.appendChild(rejectBtn);
+                    item.appendChild(actionsRow);
+                }
+
+                list.appendChild(item);
+            });
+        }
+
+        function reviewFriendRequest(requestId, action) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('连接异常，无法处理好友申请');
+                return;
+            }
+            ws.send(JSON.stringify({ action: 'review_friend_request', request_id: requestId, action }));
+        }
+
         function submitAddFriend() {
             const friendName = document.getElementById('newFriendNameInput').value.trim();
+            const friendMessage = document.getElementById('newFriendMessageInput').value.trim();
             const error = document.getElementById('addFriendError');
+            error.className = 'text-xs text-red-500 min-h-[16px] mt-2';
             error.innerText = "";
             if (!friendName) {
                 error.innerText = "请输入好友账号名称。";
@@ -2233,8 +2466,12 @@
                 error.innerText = "不能添加自己为好友。";
                 return;
             }
+            if (!friendMessage) {
+                error.innerText = "请输入验证信息，用于向对方说明你的身份和加好友理由。";
+                return;
+            }
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ action: "add_friend", target_user: friendName }));
+                ws.send(JSON.stringify({ action: "add_friend", target_user: friendName, message: friendMessage }));
                 toggleAddFriendModal(false);
             } else {
                 error.innerText = "连接异常，请稍后重试。";

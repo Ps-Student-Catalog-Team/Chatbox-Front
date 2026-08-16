@@ -629,6 +629,20 @@ func initDB() {
 		log.Fatalf("创建friends表失败: %v", err)
 	}
 
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS friend_requests (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		from_user TEXT NOT NULL,
+		to_user TEXT NOT NULL,
+		message TEXT DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'pending',
+		created_at INTEGER DEFAULT (strftime('%s','now')),
+		reviewed_at INTEGER DEFAULT 0,
+		reviewed_by TEXT DEFAULT ''
+	);`)
+	if err != nil {
+		log.Fatalf("创建friend_requests表失败: %v", err)
+	}
+
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS groups (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT NOT NULL,
@@ -1063,19 +1077,50 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			target, _ := payload["target_user"].(string)
-			if target == authenticatedUser {
+			message, _ := payload["message"].(string)
+			target = strings.TrimSpace(target)
+			message = strings.TrimSpace(message)
+			if target == "" || target == authenticatedUser {
+				conn.WriteJSON(map[string]string{"type": "add_friend_err", "content": "好友账号不能为空，且不能添加自己"})
 				continue
 			}
 
 			var dummy string
 			err := db.QueryRow("SELECT username FROM users WHERE username = ?", target).Scan(&dummy)
 			if err == sql.ErrNoRows {
+				conn.WriteJSON(map[string]string{"type": "add_friend_err", "content": "目标账号不存在"})
 				continue
 			}
 
-			_, _ = db.Exec("INSERT OR IGNORE INTO friends (username, friend_username) VALUES (?, ?)", authenticatedUser, target)
-			_, _ = db.Exec("INSERT OR IGNORE INTO friends (username, friend_username) VALUES (?, ?)", target, authenticatedUser)
+			var friendCount int
+			err = db.QueryRow("SELECT COUNT(*) FROM friends WHERE username = ? AND friend_username = ?", authenticatedUser, target).Scan(&friendCount)
+			if err == nil && friendCount > 0 {
+				conn.WriteJSON(map[string]string{"type": "add_friend_err", "content": "你们已经是好友了"})
+				continue
+			}
 
+			var requestID int
+			var requestStatus string
+			err = db.QueryRow(`SELECT id, status FROM friend_requests WHERE ((from_user = ? AND to_user = ?) OR (from_user = ? AND to_user = ?)) ORDER BY created_at DESC LIMIT 1`, authenticatedUser, target, target, authenticatedUser).Scan(&requestID, &requestStatus)
+			if err == nil && requestStatus == "pending" {
+				conn.WriteJSON(map[string]string{"type": "add_friend_err", "content": "该好友申请已发送，等待对方审核"})
+				continue
+			}
+			if err == nil && requestStatus == "approved" {
+				conn.WriteJSON(map[string]string{"type": "add_friend_err", "content": "你们已经通过好友验证"})
+				continue
+			}
+			if err == nil && requestStatus == "rejected" {
+				_, err = db.Exec("UPDATE friend_requests SET message = ?, status = 'pending', created_at = ?, reviewed_at = 0, reviewed_by = '' WHERE id = ?", message, time.Now().Unix(), requestID)
+			} else if err == sql.ErrNoRows {
+				_, err = db.Exec("INSERT INTO friend_requests (from_user, to_user, message, status, created_at) VALUES (?, ?, ?, 'pending', ?)", authenticatedUser, target, message, time.Now().Unix())
+			}
+			if err != nil {
+				conn.WriteJSON(map[string]string{"type": "add_friend_err", "content": "发送好友申请失败，请稍后再试"})
+				continue
+			}
+
+			conn.WriteJSON(map[string]string{"type": "add_friend_ok", "target_user": target, "content": "好友申请已发送，等待对方审核"})
 			sendSyncData(authenticatedUser)
 			stateMutex.RLock()
 			if _, online := clients[target]; online {
@@ -1084,6 +1129,38 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			} else {
 				stateMutex.RUnlock()
 			}
+
+		case "review_friend_request":
+			if authenticatedUser == "" {
+				continue
+			}
+			requestIDFloat, _ := payload["request_id"].(float64)
+			action, _ := payload["action"].(string)
+			requestID := int(requestIDFloat)
+			if requestID <= 0 || (action != "approve" && action != "reject") {
+				continue
+			}
+
+			var fromUser, toUser, status string
+			err := db.QueryRow("SELECT from_user, to_user, status FROM friend_requests WHERE id = ?", requestID).Scan(&fromUser, &toUser, &status)
+			if err != nil || status != "pending" {
+				continue
+			}
+			if toUser != authenticatedUser {
+				continue
+			}
+
+			if action == "approve" {
+				_, _ = db.Exec("INSERT OR IGNORE INTO friends (username, friend_username) VALUES (?, ?)", fromUser, toUser)
+				_, _ = db.Exec("INSERT OR IGNORE INTO friends (username, friend_username) VALUES (?, ?)", toUser, fromUser)
+				_, _ = db.Exec("UPDATE friend_requests SET status = 'approved', reviewed_at = ?, reviewed_by = ? WHERE id = ?", time.Now().Unix(), authenticatedUser, requestID)
+			} else {
+				_, _ = db.Exec("UPDATE friend_requests SET status = 'rejected', reviewed_at = ?, reviewed_by = ? WHERE id = ?", time.Now().Unix(), authenticatedUser, requestID)
+			}
+
+			conn.WriteJSON(map[string]string{"type": "friend_request_reviewed", "action": action, "request_id": strconv.Itoa(requestID)})
+			sendSyncData(fromUser)
+			sendSyncData(toUser)
 
 		case "delete_friend":
 			if authenticatedUser == "" {
@@ -1479,10 +1556,33 @@ func sendSyncData(username string) {
 		gRows.Close()
 	}
 
+	friendRequestsRows, err := db.Query(`SELECT id, from_user, to_user, message, status, created_at, reviewed_at, reviewed_by FROM friend_requests WHERE from_user = ? OR to_user = ? ORDER BY created_at DESC`, username, username)
+	friendRequests := make([]map[string]interface{}, 0)
+	if err == nil {
+		for friendRequestsRows.Next() {
+			var id int
+			var fromUser, toUser, message, status, reviewedBy string
+			var createdAt, reviewedAt int64
+			_ = friendRequestsRows.Scan(&id, &fromUser, &toUser, &message, &status, &createdAt, &reviewedAt, &reviewedBy)
+			friendRequests = append(friendRequests, map[string]interface{}{
+				"id":          id,
+				"from_user":   fromUser,
+				"to_user":     toUser,
+				"message":     message,
+				"status":      status,
+				"created_at":  createdAt,
+				"reviewed_at": reviewedAt,
+				"reviewed_by": reviewedBy,
+			})
+		}
+		friendRequestsRows.Close()
+	}
+
 	_ = conn.WriteJSON(map[string]interface{}{
-		"type":    "sync_data",
-		"friends": friends,
-		"groups":  syncGroups,
+		"type":            "sync_data",
+		"friends":         friends,
+		"groups":          syncGroups,
+		"friend_requests": friendRequests,
 	})
 }
 
