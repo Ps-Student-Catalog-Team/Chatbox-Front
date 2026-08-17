@@ -1225,20 +1225,75 @@
             }
         }
 
+        function syncChatBackgroundVisuals() {
+            const mainApp = document.getElementById('mainApp');
+            const chatView = document.getElementById('chatView');
+            const chatBox = document.getElementById('chatBox');
+            const sidebarList = document.getElementById('sidebarList');
+            if (!mainApp || !chatView || !chatBox || !sidebarList) return;
+
+            const bgColor = document.body.style.backgroundColor || '#f3f4f6';
+            const bgImage = document.body.style.backgroundImage || 'none';
+
+            // 蓝笔圈住的区域保持白色，不跟随背景变化
+            mainApp.style.backgroundColor = '#ffffff';
+            mainApp.style.backgroundImage = 'none';
+            mainApp.style.backgroundSize = 'auto';
+            mainApp.style.backgroundPosition = 'center';
+            mainApp.style.backgroundRepeat = 'no-repeat';
+
+            chatView.style.backgroundColor = '#ffffff';
+            chatView.style.backgroundImage = 'none';
+            chatView.style.backgroundSize = 'auto';
+            chatView.style.backgroundPosition = 'center';
+            chatView.style.backgroundRepeat = 'no-repeat';
+
+            sidebarList.style.backgroundColor = '#ffffff';
+            sidebarList.style.backgroundImage = 'none';
+
+            // 红笔圈住的区域才应用背景色/图片
+            chatBox.style.backgroundColor = bgColor === 'transparent' ? '#ffffff' : bgColor;
+            chatBox.style.backgroundImage = bgImage === 'none' ? 'none' : bgImage;
+            chatBox.style.backgroundSize = 'cover';
+            chatBox.style.backgroundPosition = 'center';
+            chatBox.style.backgroundRepeat = 'no-repeat';
+        }
+
         async function applyBackgroundUrl(url, token) {
-            if (!url) return;
+            const value = (!url || url === 'none') ? 'none' : url;
+            if (value === 'none') {
+                document.body.style.backgroundImage = 'none';
+                document.body.style.backgroundColor = '#f3f4f6';
+                syncChatBackgroundVisuals();
+                return;
+            }
             try {
-                if (url.startsWith('/photos/uploads/userpublic/') || url.startsWith('/uploads/') || url.startsWith('http')) {
-                    document.body.style.backgroundImage = `url('${url}')`;
+                if (value.startsWith('solid:')) {
+                    const color = value.slice(6);
+                    document.body.style.backgroundImage = 'none';
+                    document.body.style.backgroundColor = color;
+                    syncChatBackgroundVisuals();
                     return;
                 }
-                if (url.startsWith('/photos/uploads/')) {
-                    const blobUrl = await fetchProtectedResourceAsBlobUrl(url, token);
-                    if (blobUrl) document.body.style.backgroundImage = `url('${blobUrl}')`;
+                if (value.startsWith('/photos/uploads/userpublic/') || value.startsWith('/uploads/') || value.startsWith('http')) {
+                    document.body.style.backgroundImage = `url('${value}')`;
+                    document.body.style.backgroundColor = 'transparent';
+                    syncChatBackgroundVisuals();
+                    return;
+                }
+                if (value.startsWith('/photos/uploads/')) {
+                    const blobUrl = await fetchProtectedResourceAsBlobUrl(value, token);
+                    if (blobUrl) {
+                        document.body.style.backgroundImage = `url('${blobUrl}')`;
+                        document.body.style.backgroundColor = 'transparent';
+                    }
+                    syncChatBackgroundVisuals();
                     return;
                 }
                 // fallback
-                document.body.style.backgroundImage = `url('${url}')`;
+                document.body.style.backgroundImage = `url('${value}')`;
+                document.body.style.backgroundColor = 'transparent';
+                syncChatBackgroundVisuals();
             } catch (err) { console.warn('applyBackgroundUrl error', err); }
         }
 
@@ -1252,7 +1307,13 @@
                 }
                 const fontName = 'userfont_' + Math.random().toString(36).slice(2,8);
                 const style = document.createElement('style');
-                style.innerText = `@font-face{font-family:${fontName};src:url(${fontSrc});}` + `body{font-family:${fontName}, sans-serif !important;}`;
+                const ext = (fontSrc.split('.').pop() || '').split('?')[0].toLowerCase();
+                let format = 'truetype';
+                if (ext === 'woff2') format = 'woff2';
+                else if (ext === 'woff') format = 'woff';
+                else if (ext === 'otf') format = 'opentype';
+                else if (ext === 'ttf') format = 'truetype';
+                style.innerText = `@font-face { font-family: "${fontName}"; src: url("${fontSrc}") format("${format}"); font-display: swap; } body { font-family: "${fontName}", sans-serif !important; }`;
                 document.head.appendChild(style);
             } catch (err) { console.warn('applyFontUrl error', err); }
         }
@@ -1702,7 +1763,8 @@
             }
             if (msg.timestamp) {
                 const timeLabel = document.createElement('span');
-                timeLabel.className = 'text-[8px] md:text-[10px] text-slate-400 px-1';
+                timeLabel.className = 'text-[8px] md:text-[10px] px-1';
+                timeLabel.style.color = '#111111';
                 const date = new Date(msg.timestamp * 1000);
                 timeLabel.innerText = date.toLocaleString('zh-CN', {
                     month: '2-digit',
@@ -1714,7 +1776,8 @@
                 wrapper.appendChild(timeLabel);
             }
             const senderSpan = document.createElement('span');
-            senderSpan.className = 'text-[8px] md:text-[11px] text-slate-400 px-1 font-medium flex items-center gap-1';
+            senderSpan.className = 'text-[8px] md:text-[11px] px-1 font-medium flex items-center gap-1';
+            senderSpan.style.color = '#111111';
             senderSpan.innerHTML = isMe ? `🔹 ${msg.sender} · 我` : `🔸 ${msg.sender}`;
             wrapper.appendChild(senderSpan);
 

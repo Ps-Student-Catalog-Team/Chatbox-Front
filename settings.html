@@ -127,6 +127,14 @@
                         </div>
                         <input id="personalBgInput" type="file" accept="image/*" class="hidden" onchange="uploadAsset('personalBgInput','background')" />
 
+                        <div class="mb-4">
+                            <div class="text-sm font-semibold text-slate-700 mb-2">网页背景预览</div>
+                            <div id="bgPreviewFrame" class="relative h-28 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-inner">
+                                <div id="bgPreviewLayer" class="absolute inset-0"></div>
+                                <div class="absolute inset-x-0 bottom-0 bg-black/20 px-3 py-2 text-xs font-medium text-white backdrop-blur-[1px]">当前网页背景</div>
+                            </div>
+                        </div>
+
                         <div id="userBgContainer" class="mb-4">
                             <div class="text-sm font-semibold text-slate-700 mb-2">我的背景</div>
                             <div id="userBgList" class="flex flex-wrap gap-2"></div>
@@ -193,6 +201,72 @@
                 toast.style.opacity = '0';
                 setTimeout(() => toast.remove(), 300);
             }, 2600);
+        }
+
+        function normalizeBackgroundValue(rawUrl) {
+            if (!rawUrl || rawUrl === 'none') return 'none';
+            return rawUrl;
+        }
+
+        function syncBackgroundPreviewUI() {
+            const preview = document.getElementById('bgPreviewLayer');
+            if (!preview) return;
+            const value = normalizeBackgroundValue(window.__currentBackgroundValue || 'none');
+            preview.style.backgroundPosition = 'center top';
+            preview.style.backgroundAttachment = 'scroll';
+            preview.style.backgroundOrigin = 'padding-box';
+            preview.style.backgroundClip = 'border-box';
+            if (value === 'none') {
+                preview.style.backgroundImage = 'none';
+                preview.style.backgroundColor = '#f3f4f6';
+                preview.style.backgroundRepeat = 'repeat';
+                preview.style.backgroundSize = '1920px 1080px';
+                return;
+            }
+            if (value.startsWith('solid:')) {
+                const color = value.slice(6);
+                preview.style.backgroundImage = 'none';
+                preview.style.backgroundColor = color;
+                preview.style.backgroundRepeat = 'repeat';
+                preview.style.backgroundSize = '1920px 1080px';
+                return;
+            }
+            preview.style.backgroundColor = 'transparent';
+            preview.style.backgroundImage = `url('${value}')`;
+            preview.style.backgroundRepeat = 'repeat';
+            preview.style.backgroundSize = '1920px 1080px';
+        }
+
+        function applyBackgroundValue(rawUrl) {
+            const value = normalizeBackgroundValue(rawUrl);
+            window.__currentBackgroundValue = value;
+            const bodyStyle = document.body.style;
+            bodyStyle.backgroundAttachment = 'fixed';
+            bodyStyle.backgroundPosition = 'center top';
+            bodyStyle.backgroundOrigin = 'padding-box';
+            bodyStyle.backgroundClip = 'border-box';
+            if (value === 'none') {
+                bodyStyle.backgroundImage = 'none';
+                bodyStyle.backgroundColor = '#f3f4f6';
+                bodyStyle.backgroundRepeat = 'repeat';
+                bodyStyle.backgroundSize = '1920px 1080px';
+                syncBackgroundPreviewUI();
+                return;
+            }
+            if (value.startsWith('solid:')) {
+                const color = value.slice(6);
+                bodyStyle.backgroundImage = 'none';
+                bodyStyle.backgroundColor = color;
+                bodyStyle.backgroundRepeat = 'repeat';
+                bodyStyle.backgroundSize = '1920px 1080px';
+                syncBackgroundPreviewUI();
+                return;
+            }
+            bodyStyle.backgroundColor = 'transparent';
+            bodyStyle.backgroundImage = `url('${value}')`;
+            bodyStyle.backgroundRepeat = 'repeat';
+            bodyStyle.backgroundSize = '1920px 1080px';
+            syncBackgroundPreviewUI();
         }
 
         function goBack() {
@@ -341,10 +415,28 @@
             }
         }
 
+        async function restoreSavedBackground() {
+            const token = getAuthToken();
+            const username = localStorage.getItem(authUserKey);
+            if (!token || !username) return;
+            try {
+                const res = await fetch(`/api/user/info?username=${encodeURIComponent(username)}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) return;
+                const info = await res.json();
+                applyBackgroundValue(info.background_url || 'none');
+            } catch (err) {
+                console.warn('恢复用户背景失败', err);
+            }
+        }
+
         window.addEventListener('DOMContentLoaded', () => {
             restoreUserInfo();
             NotificationManager.loadSettings();
             updateNotificationSettingsUI();
+            syncBackgroundPreviewUI();
+            restoreSavedBackground();
             // 加载用户和公共的背景/字体资源
             loadAssets();
             // 恢复上次打开的面板
@@ -420,11 +512,168 @@
             }
         }
 
+        function openCropModalForBackground(file) {
+            const modal = document.getElementById('bgCropModal');
+            const img = document.getElementById('bgCropImage');
+            const canvas = document.getElementById('bgCropCanvas');
+            const selection = document.getElementById('bgCropSelection');
+            if (!modal || !img || !canvas || !selection) return;
+
+            const reader = new FileReader();
+            reader.onload = () => {
+                img.src = reader.result;
+                img.onload = () => {
+                    const ratio = 1920 / 1080;
+                    const previewW = 760;
+                    const previewH = 430;
+                    const maxW = Math.min(img.naturalWidth, previewW);
+                    const maxH = maxW / ratio;
+                    let cropW = Math.min(maxW, previewW);
+                    let cropH = cropW / ratio;
+                    if (cropH > previewH) {
+                        cropH = previewH;
+                        cropW = cropH * ratio;
+                    }
+                    const cropX = (previewW - cropW) / 2;
+                    const cropY = (previewH - cropH) / 2;
+                    canvas.width = 1920;
+                    canvas.height = 1080;
+                    window.__bgCropState = {
+                        file,
+                        image: img,
+                        naturalWidth: img.naturalWidth,
+                        naturalHeight: img.naturalHeight,
+                        x: cropX,
+                        y: cropY,
+                        width: cropW,
+                        height: cropH,
+                        previewW,
+                        previewH
+                    };
+                    selection.style.left = `${cropX}px`;
+                    selection.style.top = `${cropY}px`;
+                    selection.style.width = `${cropW}px`;
+                    selection.style.height = `${cropH}px`;
+                    drawCropSelection();
+                    modal.classList.remove('hidden');
+                };
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clamp(value, min, max) {
+            return Math.min(Math.max(value, min), max);
+        }
+
+        function drawCropSelection() {
+            const canvas = document.getElementById('bgCropCanvas');
+            const selection = document.getElementById('bgCropSelection');
+            const img = document.getElementById('bgCropImage');
+            const state = window.__bgCropState;
+            if (!canvas || !selection || !img || !state) return;
+
+            const ctx = canvas.getContext('2d');
+            const sx = (state.x / state.previewW) * state.naturalWidth;
+            const sy = (state.y / state.previewH) * state.naturalHeight;
+            const sw = (state.width / state.previewW) * state.naturalWidth;
+            const sh = (state.height / state.previewH) * state.naturalHeight;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+            selection.style.left = `${state.x}px`;
+            selection.style.top = `${state.y}px`;
+            selection.style.width = `${state.width}px`;
+            selection.style.height = `${state.height}px`;
+        }
+
+        function startCropDrag(event) {
+            const state = window.__bgCropState;
+            const selection = document.getElementById('bgCropSelection');
+            if (!state || !selection) return;
+            event.preventDefault();
+            const rect = selection.getBoundingClientRect();
+            state.drag = {
+                startX: event.clientX,
+                startY: event.clientY,
+                originX: state.x,
+                originY: state.y,
+                originW: state.width,
+                originH: state.height,
+                mode: event.target === selection ? 'move' : 'resize'
+            };
+        }
+
+        function handleCropMove(event) {
+            const state = window.__bgCropState;
+            if (!state || !state.drag) return;
+            const dx = event.clientX - state.drag.startX;
+            const dy = event.clientY - state.drag.startY;
+            const previewW = 760;
+            const previewH = 430;
+            if (state.drag.mode === 'move') {
+                state.x = clamp(state.drag.originX + dx, 0, previewW - state.drag.originW);
+                state.y = clamp(state.drag.originY + dy, 0, previewH - state.drag.originH);
+            } else {
+                const nextW = clamp(state.drag.originW + dx, 160, previewW - state.x);
+                const nextH = nextW / (1920 / 1080);
+                state.width = nextW;
+                state.height = nextH;
+                if (state.y + state.height > previewH) {
+                    state.height = previewH - state.y;
+                    state.width = state.height * (1920 / 1080);
+                }
+            }
+            drawCropSelection();
+        }
+
+        function endCropDrag() {
+            if (window.__bgCropState) {
+                window.__bgCropState.drag = null;
+            }
+        }
+
+        async function confirmCropBackground() {
+            const modal = document.getElementById('bgCropModal');
+            const canvas = document.getElementById('bgCropCanvas');
+            const state = window.__bgCropState;
+            if (!modal || !canvas || !state) return;
+            const ctx = canvas.getContext('2d');
+            const cropX = (state.x / state.previewW) * state.naturalWidth;
+            const cropY = (state.y / state.previewH) * state.naturalHeight;
+            const cropW = (state.width / state.previewW) * state.naturalWidth;
+            const cropH = (state.height / state.previewH) * state.naturalHeight;
+            const output = document.createElement('canvas');
+            output.width = 1920;
+            output.height = 1080;
+            const outCtx = output.getContext('2d');
+            outCtx.clearRect(0, 0, output.width, output.height);
+            outCtx.drawImage(document.getElementById('bgCropImage'), cropX, cropY, cropW, cropH, 0, 0, output.width, output.height);
+            const dataUrl = output.toDataURL('image/png');
+            applyBackgroundValue(dataUrl);
+            const token = getAuthToken();
+            await fetch('/api/user/background', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: dataUrl })
+            });
+            showToast('背景已裁剪并保存');
+            modal.classList.add('hidden');
+            window.__bgCropState = null;
+            document.getElementById('personalBgInput').value = '';
+        }
+
         async function uploadAsset(inputId, fileType) {
             const input = document.getElementById(inputId);
             if (!input || !input.files || input.files.length === 0) return;
             const file = input.files[0];
             if (!file) return;
+
+            if (fileType === 'background') {
+                openCropModalForBackground(file);
+                return;
+            }
 
             const visibilityName = fileType === 'font' ? 'fontVisibility' : 'bgVisibility';
             const visibility = document.querySelector(`input[name="${visibilityName}"]:checked`).value || 'private';
@@ -444,7 +693,6 @@
                 const data = await res.json();
                 if (data && data.url) {
                     showToast('上传成功');
-                    // 如果上传成功，自动将其设置为当前用户的背景/字体（私密或公开均可被设置）
                     if (fileType === 'background') {
                         await fetch('/api/user/background', {
                             method: 'POST',
@@ -458,7 +706,6 @@
                             body: JSON.stringify({ url: data.url })
                         });
                     }
-                    // 刷新资源列表
                     loadAssets();
                 }
             } catch (err) {
@@ -467,6 +714,69 @@
             } finally {
                 input.value = '';
             }
+        }
+
+        const solidBgPalette = [
+            '#F8FAFC', '#E2E8F0', '#CBD5E1', '#94A3B8',
+            '#FCA5A5', '#F9A8D4', '#C4B5FD', '#A5B4FC',
+            '#93C5FD', '#67E8F9', '#A7F3D0', '#BBF7D0',
+            '#FCD34D', '#FDBA74', '#FDE68A', '#111827'
+        ];
+
+        function renderSolidColorPalette(containerId) {
+            const c = document.getElementById(containerId);
+            if (!c) return;
+            c.innerHTML = '';
+
+            const wrap = document.createElement('div');
+            wrap.className = 'flex flex-wrap gap-2 mt-2';
+
+            const noneBtn = document.createElement('button');
+            noneBtn.type = 'button';
+            noneBtn.className = 'px-2 py-1 rounded-md border border-slate-300 bg-white text-xs text-slate-600';
+            noneBtn.innerText = '无背景';
+            noneBtn.onclick = async () => {
+                applyBackgroundValue('none');
+                try {
+                    await fetch('/api/user/background', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${getAuthToken()}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: 'none' })
+                    });
+                    showToast('已清除背景');
+                } catch (err) {
+                    console.warn('清除背景失败', err);
+                    showToast('已清除背景');
+                }
+            };
+            wrap.appendChild(noneBtn);
+
+            solidBgPalette.forEach(color => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'w-8 h-8 rounded-md border border-slate-300 shadow-sm transition hover:scale-105';
+                btn.title = color;
+                btn.style.backgroundColor = color;
+                btn.style.boxShadow = 'inset 0 0 0 1px rgba(15,23,42,0.08)';
+                btn.onclick = async () => {
+                    const solidValue = `solid:${color}`;
+                    applyBackgroundValue(solidValue);
+                    try {
+                        await fetch('/api/user/background', {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${getAuthToken()}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url: solidValue })
+                        });
+                        showToast('纯色背景已应用');
+                    } catch (err) {
+                        console.warn('纯色背景保存失败', err);
+                        showToast('纯色背景已应用');
+                    }
+                };
+                wrap.appendChild(btn);
+            });
+
+            c.appendChild(wrap);
         }
 
         async function loadAssets() {
@@ -490,6 +800,7 @@
                 window.userFontAssets = userFont.assets || [];
 
                 renderBgList('publicBgList', window.publicBgAssets);
+                renderSolidColorPalette('publicBgList');
                 renderBgList('userBgList', window.userBgAssets);
                 renderFontList('publicFontList', window.publicFontAssets);
                 renderFontList('userFontList', window.userFontAssets);
@@ -512,7 +823,7 @@
                         headers: { 'Authorization': `Bearer ${getAuthToken()}`, 'Content-Type': 'application/json' },
                         body: JSON.stringify({ url })
                     });
-                    document.body.style.backgroundImage = `url('${url}')`;
+                    applyBackgroundValue(url);
                     showToast('背景已应用');
                 };
                 // 右键打开原图预览
@@ -556,7 +867,7 @@
                     else if (ext === 'woff') fmt = 'woff';
                     else if (ext === 'otf') fmt = 'opentype';
                     else if (ext === 'ttf') fmt = 'truetype';
-                    style.innerText = `@font-face{font-family:'${fontName}';src: url('${srcUrl}') format('${fmt}');font-display:swap;}`;
+                    style.innerText = `@font-face { font-family: "${fontName}"; src: url("${srcUrl}") format("${fmt}"); font-display: swap; }`;
                     document.head.appendChild(style);
                     await fetch('/api/user/font', {
                         method: 'POST',
@@ -564,6 +875,7 @@
                         body: JSON.stringify({ url })
                     });
                     showToast('字体已应用');
+                    document.body.style.fontFamily = `"${fontName}", sans-serif`;
                 };
                 card.appendChild(lbl);
                 card.appendChild(sample);
@@ -581,12 +893,15 @@
                     else if (ext2 === 'woff') fmt2 = 'woff';
                     else if (ext2 === 'otf') fmt2 = 'opentype';
                     else if (ext2 === 'ttf') fmt2 = 'truetype';
-                    s.innerText = `@font-face{font-family:'${previewName}';src: url('${srcUrl}') format('${fmt2}');font-display:swap;}`;
+                    s.innerText = `@font-face { font-family: "${previewName}"; src: url("${srcUrl}") format("${fmt2}"); font-display: swap; }`;
                     document.head.appendChild(s);
+                    const family = `"${previewName}", sans-serif`;
+                    sample.style.fontFamily = family;
+                    lbl.style.fontFamily = family;
                     try {
-                        await document.fonts.load(`16px ${previewName}`);
-                        sample.style.fontFamily = previewName + ', sans-serif';
+                        await document.fonts.load(`16px "${previewName}"`);
                     } catch (err) {
+                        console.warn('字体预览加载失败', err);
                     }
                 })();
             });
@@ -646,6 +961,26 @@
         </div>
     </div>
 
+    <div id="bgCropModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-black/60">
+        <div class="w-[820px] max-w-[92vw] rounded-2xl bg-white p-4 shadow-2xl">
+            <div class="mb-3 flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-slate-800">裁剪背景</h3>
+                <button onclick="document.getElementById('bgCropModal').classList.add('hidden')" class="text-slate-500 hover:text-slate-700">✕</button>
+            </div>
+            <div class="mb-3 text-xs text-slate-500">拖动和缩放选区，保留需要的部分，最终将按 1920 × 1080 裁出并平铺显示。</div>
+            <div class="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-100" style="width: 760px; max-width: 100%; height: 430px;">
+                <img id="bgCropImage" class="absolute inset-0 h-full w-full object-cover" draggable="false" />
+                <div id="bgCropSelection" class="absolute border-2 border-blue-500 bg-blue-500/10" style="cursor: move; box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.38);" onmousedown="startCropDrag(event)" onmousemove="handleCropMove(event)" onmouseup="endCropDrag()" onmouseleave="endCropDrag()"></div>
+            </div>
+            <div class="mt-4 flex justify-end gap-2">
+                <button onclick="document.getElementById('bgCropModal').classList.add('hidden')" class="rounded-xl bg-slate-100 px-4 py-2 text-sm text-slate-700">取消</button>
+                <button onclick="confirmCropBackground()" class="rounded-xl bg-blue-600 px-4 py-2 text-sm text-white">确认裁剪</button>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="bgCropCanvas" class="hidden"></canvas>
+
     <script>
         function toggleCollapse(id) {
             const el = document.getElementById(id);
@@ -696,7 +1031,7 @@
                             headers: { 'Authorization': `Bearer ${getAuthToken()}`, 'Content-Type': 'application/json' },
                             body: JSON.stringify({ url })
                         });
-                        document.body.style.backgroundImage = `url('${src}')`;
+                        applyBackgroundValue(src);
                         showToast('背景已应用');
                         closeGallery();
                     } catch (err) {

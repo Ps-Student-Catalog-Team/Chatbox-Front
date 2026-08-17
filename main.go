@@ -2863,8 +2863,16 @@ func handleUserBackground(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		if payload.URL == "" {
-			w.WriteHeader(http.StatusBadRequest)
+		if payload.URL == "" || payload.URL == "none" {
+			_, _ = db.Exec("UPDATE users SET background_url = ? WHERE username = ?", "none", user)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{"url": "none"})
+			return
+		}
+		if strings.HasPrefix(payload.URL, "solid:") {
+			_, _ = db.Exec("UPDATE users SET background_url = ? WHERE username = ?", payload.URL, user)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{"url": payload.URL})
 			return
 		}
 		_, _ = db.Exec("UPDATE users SET background_url = ? WHERE username = ?", payload.URL, user)

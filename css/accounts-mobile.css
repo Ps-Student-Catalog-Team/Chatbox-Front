@@ -36,6 +36,10 @@ body {
 /* 移动端轻量毛玻璃 */
 .container {
     background: rgba(255, 255, 255, 0.75);
+    background-image: none;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
     border: 1px solid rgba(255, 255, 255, 0.5);

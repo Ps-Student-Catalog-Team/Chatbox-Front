@@ -29,6 +29,10 @@ body {
 /* 彻底告别"无限拉伸的长条"，收束为 400px 黄金比例的精致卡片 */
 .container {
     background: rgba(255, 255, 255, 0.65);
+    background-image: none;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
     backdrop-filter: blur(24px) saturate(190%);
     -webkit-backdrop-filter: blur(24px) saturate(190%);
     border: 1px solid rgba(255, 255, 255, 0.45);
