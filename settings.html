@@ -208,6 +208,22 @@
             return rawUrl;
         }
 
+        function trackActiveBackgroundBlob(url) {
+            const value = normalizeBackgroundValue(url);
+            if (value.startsWith('blob:')) {
+                if (window.__activeBackgroundBlobUrl && window.__activeBackgroundBlobUrl !== value) {
+                    try { URL.revokeObjectURL(window.__activeBackgroundBlobUrl); } catch (err) {}
+                }
+                window.__activeBackgroundBlobUrl = value;
+                return;
+            }
+            if (window.__activeBackgroundBlobUrl && window.__activeBackgroundBlobUrl !== value) {
+                const prev = window.__activeBackgroundBlobUrl;
+                window.__activeBackgroundBlobUrl = null;
+                try { URL.revokeObjectURL(prev); } catch (err) {}
+            }
+        }
+
         function syncBackgroundPreviewUI() {
             const preview = document.getElementById('bgPreviewLayer');
             if (!preview) return;
@@ -239,17 +255,28 @@
 
         function applyBackgroundValue(rawUrl) {
             const value = normalizeBackgroundValue(rawUrl);
-            window.__currentBackgroundValue = value;
             const bodyStyle = document.body.style;
+            const preview = document.getElementById('bgPreviewLayer');
+            const previousValue = window.__currentBackgroundValue || 'none';
+            const shouldFade = previousValue !== value;
+            window.__currentBackgroundValue = value;
+            trackActiveBackgroundBlob(value);
+
             bodyStyle.backgroundAttachment = 'fixed';
             bodyStyle.backgroundPosition = 'center top';
             bodyStyle.backgroundOrigin = 'padding-box';
             bodyStyle.backgroundClip = 'border-box';
+            bodyStyle.transition = 'background-color 260ms ease, background-image 260ms ease, opacity 260ms ease';
+            if (preview) {
+                preview.style.transition = 'background-color 260ms ease, background-image 260ms ease, opacity 260ms ease';
+            }
+
             if (value === 'none') {
                 bodyStyle.backgroundImage = 'none';
                 bodyStyle.backgroundColor = '#f3f4f6';
                 bodyStyle.backgroundRepeat = 'repeat';
                 bodyStyle.backgroundSize = '1920px 1080px';
+                if (preview) preview.style.opacity = '1';
                 syncBackgroundPreviewUI();
                 return;
             }
@@ -259,13 +286,42 @@
                 bodyStyle.backgroundColor = color;
                 bodyStyle.backgroundRepeat = 'repeat';
                 bodyStyle.backgroundSize = '1920px 1080px';
+                if (preview) preview.style.opacity = '1';
                 syncBackgroundPreviewUI();
                 return;
             }
+
+            if (shouldFade) {
+                bodyStyle.opacity = '0.8';
+                if (preview) preview.style.opacity = '0.5';
+                requestAnimationFrame(() => {
+                    bodyStyle.backgroundColor = 'transparent';
+                    bodyStyle.backgroundImage = `url('${value}')`;
+                    bodyStyle.backgroundRepeat = 'repeat';
+                    bodyStyle.backgroundSize = '1920px 1080px';
+                    bodyStyle.opacity = '1';
+                    if (preview) {
+                        preview.style.backgroundColor = 'transparent';
+                        preview.style.backgroundImage = `url('${value}')`;
+                        preview.style.backgroundRepeat = 'repeat';
+                        preview.style.backgroundSize = '1920px 1080px';
+                        preview.style.opacity = '1';
+                    }
+                });
+                return;
+            }
+
             bodyStyle.backgroundColor = 'transparent';
             bodyStyle.backgroundImage = `url('${value}')`;
             bodyStyle.backgroundRepeat = 'repeat';
             bodyStyle.backgroundSize = '1920px 1080px';
+            if (preview) {
+                preview.style.backgroundColor = 'transparent';
+                preview.style.backgroundImage = `url('${value}')`;
+                preview.style.backgroundRepeat = 'repeat';
+                preview.style.backgroundSize = '1920px 1080px';
+                preview.style.opacity = '1';
+            }
             syncBackgroundPreviewUI();
         }
 
@@ -717,10 +773,11 @@
         }
 
         const solidBgPalette = [
-            '#F8FAFC', '#E2E8F0', '#CBD5E1', '#94A3B8',
-            '#FCA5A5', '#F9A8D4', '#C4B5FD', '#A5B4FC',
-            '#93C5FD', '#67E8F9', '#A7F3D0', '#BBF7D0',
-            '#FCD34D', '#FDBA74', '#FDE68A', '#111827'
+            '#F8FAFC', '#E2E8F0', '#CBD5E1', '#94A3B8', '#475569', '#111827',
+            '#FCA5A5', '#F9A8D4', '#C4B5FD', '#A5B4FC', '#93C5FD', '#67E8F9',
+            '#A7F3D0', '#BBF7D0', '#86EFAC', '#4ADE80', '#34D399', '#2DD4BF',
+            '#FCD34D', '#FDBA74', '#FDE68A', '#FB7185', '#F97316', '#F59E0B',
+            '#E879F9', '#8B5CF6', '#6366F1', '#0EA5E9', '#14B8A6', '#22C55E'
         ];
 
         function renderSolidColorPalette(containerId) {
@@ -924,11 +981,13 @@
         }
 
         function revokeAllPreviewUrls() {
+            const active = window.__activeBackgroundBlobUrl;
             if (window._createdPreviewUrls && window._createdPreviewUrls.length) {
                 window._createdPreviewUrls.forEach(u => {
+                    if (u === active) return;
                     try { URL.revokeObjectURL(u); } catch (e) {}
                 });
-                window._createdPreviewUrls = [];
+                window._createdPreviewUrls = (window._createdPreviewUrls || []).filter(u => u === active);
             }
         }
 
@@ -1048,12 +1107,14 @@
             const m = document.getElementById('galleryModal');
             if (!m) return;
             m.classList.add('hidden');
-            // 回收临时 blob URL
+            // 回收临时 blob URL，但保留当前页面正在使用的背景 blob
             if (window._createdPreviewUrls && window._createdPreviewUrls.length) {
+                const active = window.__activeBackgroundBlobUrl;
                 window._createdPreviewUrls.forEach(u => {
+                    if (u === active) return;
                     try { URL.revokeObjectURL(u); } catch (e) {}
                 });
-                window._createdPreviewUrls = [];
+                window._createdPreviewUrls = active ? [active] : [];
             }
         }
 
