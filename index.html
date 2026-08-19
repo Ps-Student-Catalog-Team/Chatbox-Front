@@ -60,6 +60,36 @@
             animation: overlayFade 220ms ease-out both;
         }
 
+        .modal-closing {
+            animation: overlayExit 220ms ease-in both;
+            pointer-events: none;
+        }
+
+        .modal-closing > div {
+            animation: modalExit 220ms ease-in both;
+        }
+
+        #friendRequestModal {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transition: opacity 220ms ease, visibility 220ms ease;
+        }
+
+        #friendRequestModal.is-open {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+        }
+
+        #friendRequestModal.is-open > div {
+            animation: modalPop 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        #friendRequestModal.is-closing > div {
+            animation: modalExit 220ms ease-in both;
+        }
+
         .item-slide-in {
             opacity: 0;
             transform: translateY(12px);
@@ -95,6 +125,11 @@
         @keyframes overlayFade {
             from { opacity: 0; }
             to { opacity: 1; }
+        }
+
+        @keyframes overlayExit {
+            from { opacity: 1; }
+            to { opacity: 0; }
         }
 
         @keyframes modalPop {
@@ -369,8 +404,8 @@
             width: 3rem;
             height: 3rem;
             border-radius: 9999px;
-            border: 1px solid rgba(148, 163, 184, 0.35);
-            background: rgba(248, 250, 252, 0.08);
+            border: none;
+            background: transparent;
             color: #cbd5e1;
             font-size: 1rem;
             transition: background-color 160ms ease, transform 160ms ease, border-color 160ms ease;
@@ -385,8 +420,7 @@
         }
 
         body.dark-mode #themeToggleButton {
-            background: rgba(255, 255, 255, 0.08);
-            border-color: rgba(148, 163, 184, 0.25);
+            background: transparent;
             color: #f8fafc;
         }
 
@@ -576,11 +610,6 @@
                                     <span>🗑️</span> 清空对话记录
                                 </button>
                             </div>
-                            <!-- 通用菜单项 -->
-                            <hr class="my-1">
-                            <button onclick="openNotificationSettings()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
-                                <span>🔔</span> 提醒设置
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -613,7 +642,7 @@
         </div>
     </div>
 
-    <div id="groupModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0">
+    <div id="groupModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0" onclick="if (event.target === this) toggleGroupModal(false)">
         <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-96 space-y-4 max-h-[90vh] overflow-y-auto modal-appear">
             <h3 class="text-sm font-bold text-slate-800 flex items-center gap-1">创建讨论群组</h3>
             <div id="groupModalError" class="hidden bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-600 flex items-start gap-2">
@@ -636,7 +665,7 @@
         </div>
     </div>
 
-    <div id="groupMembersModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0 overlay-fade">
+    <div id="groupMembersModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0 overlay-fade" onclick="if (event.target === this) toggleGroupMembersModal(false)">
         <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-96 space-y-4 max-h-[90vh] overflow-y-auto modal-pop">
             <div class="flex items-center justify-between mb-4">
                 <div>
@@ -653,7 +682,7 @@
     </div>
 
     <!-- 添加好友模态框 -->
-    <div id="addFriendModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0">
+    <div id="addFriendModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0" onclick="if (event.target === this) toggleAddFriendModal(false)">
         <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-80 space-y-4 max-h-[80vh] overflow-y-auto modal-appear">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-sm font-bold text-slate-800">添加好友</h3>
@@ -676,7 +705,7 @@
     </div>
 
     <!-- 验证消息/好友申请历史模态框 -->
-    <div id="friendRequestModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0">
+    <div id="friendRequestModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0" onclick="if (event.target === this) toggleFriendRequestModal(false)">
         <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-[420px] space-y-4 max-h-[80vh] overflow-y-auto modal-appear">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-sm font-bold text-slate-800">好友验证消息</h3>
@@ -684,14 +713,15 @@
             </div>
             <div id="friendRequestSummary" class="text-xs text-slate-500"></div>
             <div id="friendRequestList" class="space-y-3"></div>
-            <div class="flex justify-end pt-2 border-t border-slate-100">
+            <div class="flex items-center justify-between pt-2 border-t border-slate-100">
+                <button onclick="clearFriendRequests()" class="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs cursor-pointer font-medium">清空</button>
                 <button onclick="toggleFriendRequestModal(false)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer font-medium">关闭</button>
             </div>
         </div>
     </div>
 
     <!-- 群聊管理模态框 -->
-    <div id="groupManagementModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50">
+    <div id="groupManagementModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50" onclick="if (event.target === this) toggleGroupManagementModal(false)">
         <div class="bg-white rounded-2xl shadow-2xl p-6 w-96 space-y-4 max-h-[80vh] overflow-y-auto modal-appear">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-sm font-bold text-slate-800">群聊管理</h3>
@@ -769,7 +799,7 @@
     </div>
 
     <!-- 邀请成员加入群聊模态框 -->
-    <div id="addMemberModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50">
+    <div id="addMemberModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50" onclick="if (event.target === this) toggleAddMemberModal(false)">
         <div class="bg-white rounded-2xl shadow-2xl p-6 w-96 space-y-4 max-h-[80vh] overflow-y-auto modal-appear">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-sm font-bold text-slate-800">邀请成员加入群聊</h3>
@@ -803,7 +833,7 @@
     </div>
 
     <!-- 通知设置模态框 -->
-    <div id="notificationSettingsModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0">
+    <div id="notificationSettingsModal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-3 md:p-0" onclick="if (event.target === this) closeModalWithAnimation(this)">
         <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-96 space-y-4 max-h-[85vh] overflow-y-auto modal-appear">
             <div class="flex items-center justify-between mb-2">
                 <h3 class="text-sm font-bold text-slate-800">消息提醒设置</h3>
@@ -895,10 +925,12 @@
         let currentAvatar = { type: 'text', text: 'U', color: '#2563eb', url: '' };
         let replyingTo = null; // 当前要回复的消息
         let messageContextMenu = null;
+        let userContextMenu = null;
         
         let globalFriends = [];
         let globalGroups = [];
         let globalFriendRequests = [];
+        let globalBlockedUsers = [];
         
         let cacheMessages = {
             "public:global": []
@@ -1092,6 +1124,7 @@
                             globalFriends = data.friends || [];
                             globalGroups = data.groups || [];
                             globalFriendRequests = data.friend_requests || [];
+                            globalBlockedUsers = data.blocked_users || [];
                             // 保存owner信息（用于权限检查）
                             globalGroups.forEach(g => {
                                 if (data.groups && data.groups.length > 0) {
@@ -1119,6 +1152,27 @@
                             } else if (data.action === 'reject') {
                                 alert('已拒绝好友申请');
                             }
+                            break;
+                        case "friend_request_review_err":
+                            alert(data.content || '处理好友申请失败，请稍后重试');
+                            break;
+                        case "clear_friend_requests_ok":
+                            globalFriendRequests = [];
+                            renderFriendRequestModal();
+                            renderSidebarList();
+                            break;
+                        case "clear_friend_requests_err":
+                            alert(data.content || '清空好友申请失败，请稍后重试');
+                            break;
+                        case "block_user_ok":
+                            if (data.target_user && !globalBlockedUsers.includes(data.target_user)) {
+                                globalBlockedUsers.push(data.target_user);
+                            }
+                            renderChatBubbles();
+                            alert(`已屏蔽 ${data.target_user} 的发言`);
+                            break;
+                        case "block_user_err":
+                            alert(data.content || '屏蔽失败，请稍后重试');
                             break;
                         case "create_group_ok":
                             const newGroup = {
@@ -1489,37 +1543,11 @@
                 };
                 content.appendChild(requestCard);
 
-                const hasRequestHistory = totalRequestCount > 0;
-                if (globalFriends.length === 0 && globalGroups.length === 0 && !hasRequestHistory) {
+                if (globalFriends.length === 0 && globalGroups.length === 0) {
                     const emptyDiv = document.createElement('div');
                     emptyDiv.className = "text-center text-slate-400 text-xs py-8";
                     emptyDiv.innerText = "当前无好友或群组，可通过添加好友或创建群组开始。";
                     content.appendChild(emptyDiv);
-                }
-                if (hasRequestHistory) {
-                    const requestTitle = document.createElement('div');
-                    requestTitle.className = "text-xs font-semibold text-slate-500 uppercase tracking-[0.16em] px-2 pt-2 pb-2";
-                    requestTitle.innerText = "最近验证";
-                    content.appendChild(requestTitle);
-                    const previewRequests = globalFriendRequests.slice(0, 3);
-                    previewRequests.forEach(req => {
-                        const div = document.createElement('div');
-                        const isUnread = req.to_user === currentUser && req.status === 'pending';
-                        div.className = `p-3 rounded-2xl border mb-2 cursor-pointer transition ${isUnread ? 'bg-amber-50 border-amber-200 text-amber-700' : req.status === 'approved' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-rose-50 border-rose-200 text-rose-700'}`;
-                        const direction = req.to_user === currentUser ? '收到' : '发出';
-                        const statusText = req.status === 'pending' ? '待审核' : req.status === 'approved' ? '已通过' : '已拒绝';
-                        const senderName = req.to_user === currentUser ? req.from_user : req.to_user;
-                        div.innerHTML = `
-                            <div class="flex items-center justify-between gap-2">
-                                <span class="font-medium">${senderName}</span>
-                                <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-white/70">${statusText}</span>
-                            </div>
-                            <div class="mt-1 text-[11px] opacity-80">${direction} · ${req.message || '未填写验证信息'}</div>
-                            ${isUnread ? '<span class="inline-block mt-2 w-2 h-2 rounded-full bg-red-500 align-middle"></span>' : ''}
-                        `;
-                        div.onclick = () => toggleFriendRequestModal(true);
-                        content.appendChild(div);
-                    });
                 }
                 if (globalFriends.length > 0) {
                     const friendsTitle = document.createElement('div');
@@ -1623,7 +1651,9 @@
             const box = document.getElementById('chatBox');
             box.innerHTML = "";
             const sessionKey = `${activeTarget.type}:${activeTarget.id}`;
-            const messages = cacheMessages[sessionKey] || [];
+            const messages = (cacheMessages[sessionKey] || []).filter(msg =>
+                !globalBlockedUsers.includes(msg.sender) || msg.sender === currentUser
+            );
             
             if (messages.length === 0) {
                 const emptyTip = document.createElement('div');
@@ -1674,6 +1704,13 @@
                     e.stopPropagation();
                     openProfile(msg.sender);
                 });
+                if (!isMe) {
+                    avatarCell.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        showUserContextMenu(e, msg.sender);
+                    });
+                }
                 if (isMe) body.appendChild(buildMessageBubble(msg, isMe));
                 body.appendChild(avatarCell);
                 if (!isMe) body.appendChild(buildMessageBubble(msg, isMe));
@@ -1967,6 +2004,90 @@
                 messageContextMenu.remove();
             }
             messageContextMenu = null;
+        }
+
+        function hideUserContextMenu() {
+            if (userContextMenu && userContextMenu.parentElement) {
+                userContextMenu.remove();
+            }
+            userContextMenu = null;
+        }
+
+        function sendMessageToUser(username) {
+            hideUserContextMenu();
+            selectActiveChat('private', username, username);
+            loadHistoryMessages('private', username);
+        }
+
+        function mentionUser(username) {
+            hideUserContextMenu();
+            const input = document.getElementById('messageInput');
+            if (!input) return;
+            const mention = `@${username} `;
+            input.value = input.value && !input.value.endsWith(' ') ? `${input.value} ${mention}` : `${input.value}${mention}`;
+            input.focus();
+        }
+
+        function addUserFromContextMenu(username) {
+            hideUserContextMenu();
+            toggleAddFriendModal(true);
+            const input = document.getElementById('newFriendNameInput');
+            if (input) input.value = username;
+        }
+
+        function showUserContextMenu(event, username) {
+            hideUserContextMenu();
+            hideMessageContextMenu();
+
+            const menu = document.createElement('div');
+            menu.className = 'fixed z-[9999] w-[205px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.18)] animate-[fadeInContextMenu_0.12s_ease-out]';
+            menu.style.left = `${Math.min(Math.max(8, event.clientX), window.innerWidth - 213)}px`;
+            menu.style.top = `${Math.min(Math.max(8, event.clientY), window.innerHeight - 310)}px`;
+
+            const actions = [
+                { icon: '◯', label: '发送消息', action: () => sendMessageToUser(username) },
+                { icon: '@', label: 'TA', action: () => mentionUser(username) },
+                { icon: '▤', label: '查看资料', action: () => { hideUserContextMenu(); openProfile(username); } },
+                { icon: '♙', label: '添加好友', action: () => addUserFromContextMenu(username) },
+                { divider: true },
+                { icon: '△', label: '举报', action: () => { hideUserContextMenu(); alert('举报功能暂未开放'); } },
+                { icon: '◉', label: '屏蔽此人发言', action: () => {
+                    hideUserContextMenu();
+                    if (!ws || ws.readyState !== WebSocket.OPEN) {
+                        alert('连接异常，无法屏蔽此人');
+                        return;
+                    }
+                    ws.send(JSON.stringify({ action: 'block_user', target_user: username }));
+                } }
+            ];
+
+            actions.forEach(item => {
+                if (item.divider) {
+                    const divider = document.createElement('div');
+                    divider.className = 'mx-3 h-px bg-slate-100';
+                    menu.appendChild(divider);
+                    return;
+                }
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'flex w-full items-center gap-4 px-4 py-2.5 text-left text-sm text-slate-700 transition hover:bg-slate-50';
+                button.innerHTML = `<span class="inline-flex w-5 justify-center text-lg leading-none text-slate-800">${item.icon}</span><span>${item.label}</span>`;
+                button.onclick = (e) => {
+                    e.stopPropagation();
+                    item.action();
+                };
+                menu.appendChild(button);
+            });
+
+            document.body.appendChild(menu);
+            userContextMenu = menu;
+            const closeOnClick = (e) => {
+                if (!menu.contains(e.target)) {
+                    hideUserContextMenu();
+                    document.removeEventListener('click', closeOnClick);
+                }
+            };
+            setTimeout(() => document.addEventListener('click', closeOnClick), 0);
         }
 
         function showMessageContextMenu(event, msg, wrapper, isMe, isMobile) {
@@ -2414,7 +2535,7 @@
             const modal = document.getElementById('addFriendModal');
             const error = document.getElementById('addFriendError');
             if (show) {
-                modal.classList.remove('hidden');
+                openModalWithAnimation(modal);
                 document.getElementById('newFriendNameInput').value = "";
                 document.getElementById('newFriendMessageInput').value = "";
                 error.className = 'text-xs text-red-500 min-h-[16px] mt-2';
@@ -2424,19 +2545,52 @@
                     error.innerHTML = '<div class="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-600 flex items-start gap-2"><span>⚠️</span><span>WebSocket 未连接，请稍后重试。</span></div>';
                 }
             } else {
-                modal.classList.add('hidden');
+                closeModalWithAnimation(modal);
                 error.innerText = "";
             }
         }
 
+        window.openModalWithAnimation = function(modal) {
+            if (!modal) return;
+            if (modal._modalCloseTimer) {
+                clearTimeout(modal._modalCloseTimer);
+                modal._modalCloseTimer = null;
+            }
+            modal.classList.remove('hidden', 'modal-closing');
+        };
+
+        window.closeModalWithAnimation = function(modal) {
+            if (!modal || modal.classList.contains('hidden')) return;
+            if (modal._modalCloseTimer) clearTimeout(modal._modalCloseTimer);
+            modal.classList.add('modal-closing');
+            modal._modalCloseTimer = setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('modal-closing');
+                modal._modalCloseTimer = null;
+            }, 220);
+        };
+
         function toggleFriendRequestModal(show) {
             const modal = document.getElementById('friendRequestModal');
             if (!modal) return;
+            if (modal._closeTimer) {
+                clearTimeout(modal._closeTimer);
+                modal._closeTimer = null;
+            }
             if (show) {
                 renderFriendRequestModal();
                 modal.classList.remove('hidden');
+                modal.classList.remove('is-closing');
+                modal.classList.add('is-open');
             } else {
-                modal.classList.add('hidden');
+                if (modal.classList.contains('hidden')) return;
+                modal.classList.remove('is-open');
+                modal.classList.add('is-closing');
+                modal._closeTimer = setTimeout(() => {
+                    modal.classList.add('hidden');
+                    modal.classList.remove('is-closing');
+                    modal._closeTimer = null;
+                }, 220);
             }
         }
 
@@ -2517,7 +2671,25 @@
                 alert('连接异常，无法处理好友申请');
                 return;
             }
-            ws.send(JSON.stringify({ action: 'review_friend_request', request_id: requestId, action }));
+            if (!requestId || !['approve', 'reject'].includes(action)) {
+                alert('好友申请数据无效，请刷新页面后重试');
+                return;
+            }
+            ws.send(JSON.stringify({ action: 'review_friend_request', request_id: requestId, review_action: action }));
+        }
+
+        async function clearFriendRequests() {
+            if (globalFriendRequests.length === 0) {
+                alert('当前没有好友申请记录');
+                return;
+            }
+            const confirmed = await showConfirmDialog('清空后将无法恢复所有好友申请记录。', '确认清空好友验证？', 'clear');
+            if (!confirmed) return;
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('连接异常，无法清空好友申请');
+                return;
+            }
+            ws.send(JSON.stringify({ action: 'clear_friend_requests' }));
         }
 
         function submitAddFriend() {
@@ -2580,7 +2752,7 @@
                     setTimeout(() => errorDiv.classList.add('hidden'), 3000);
                     return;
                 }
-                modal.classList.remove('hidden');
+                openModalWithAnimation(modal);
                 const listContainer = document.getElementById('modalFriendsChecklist');
                 listContainer.innerHTML = "";
                 globalFriends.forEach(f => {
@@ -2606,7 +2778,7 @@
                 });
                 document.getElementById('newGroupName').value = "";
             } else {
-                modal.classList.add('hidden');
+                closeModalWithAnimation(modal);
             }
         }
 
@@ -2707,9 +2879,9 @@
         function toggleGroupManagementModal(show) {
             const modal = document.getElementById('groupManagementModal');
             if (show) {
-                modal.classList.remove('hidden');
+                openModalWithAnimation(modal);
             } else {
-                modal.classList.add('hidden');
+                closeModalWithAnimation(modal);
             }
         }
 
@@ -2905,9 +3077,9 @@
             if (show && activeTarget && activeTarget.type === 'group') {
                 document.getElementById('addMemberGroupName').innerText = activeTarget.name;
                 loadMembersForInvite();
-                modal.classList.remove('hidden');
+                openModalWithAnimation(modal);
             } else {
-                modal.classList.add('hidden');
+                closeModalWithAnimation(modal);
             }
         }
 
@@ -3046,9 +3218,9 @@
             const modal = document.getElementById('groupMembersModal');
             if (!modal) return;
             if (show) {
-                modal.classList.remove('hidden');
+                openModalWithAnimation(modal);
             } else {
-                modal.classList.add('hidden');
+                closeModalWithAnimation(modal);
             }
         }
 
@@ -3204,14 +3376,14 @@
         function openExtensionsModal() {
             const modal = document.getElementById('extensionsModal');
             if (!modal) return;
-            modal.classList.remove('hidden');
+            openModalWithAnimation(modal);
             renderExtensionsModal();
         }
 
         function closeExtensionsModal() {
             const modal = document.getElementById('extensionsModal');
             if (!modal) return;
-            modal.classList.add('hidden');
+            closeModalWithAnimation(modal);
         }
 
         function renderExtensionsModal() {
@@ -3292,7 +3464,7 @@
 
     </script>
         <!-- 扩展模态 -->
-        <div id="extensionsModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50">
+        <div id="extensionsModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50" onclick="if (event.target === this) closeExtensionsModal()">
             <div class="w-full max-w-3xl rounded-2xl bg-white p-6">
                 <div class="flex items-start justify-between">
                     <div>
@@ -3310,7 +3482,7 @@
             </div>
         </div>
         <!-- AI 聊天模态 -->
-        <div id="aiChatModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50">
+        <div id="aiChatModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50" onclick="if (event.target === this) window.aiChatInstance?.closeAIChat()">
             <div class="w-full max-w-2xl rounded-2xl bg-white p-6">
                 <div class="flex items-center justify-between">
                     <h3 class="text-lg font-bold text-slate-800">AI 聊天</h3>

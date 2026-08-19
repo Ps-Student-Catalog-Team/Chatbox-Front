@@ -87,7 +87,8 @@ func main() {
 	initDB()
 	defer db.Close()
 
-	http.Handle("/", http.FileServer(http.Dir("./")))
+	staticFiles := http.FileServer(http.Dir("./"))
+	http.Handle("/", noCacheStaticHandler(staticFiles))
 	http.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("./uploads"))))
 	http.Handle("/favicon.ico", http.FileServer(http.Dir("./photos/ico")))
 	// serve user-uploaded public/private assets (backgrounds/fonts)
@@ -149,6 +150,15 @@ func main() {
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatalf("服务器启动失败: %v", err)
 	}
+}
+
+func noCacheStaticHandler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func loadAdminConfig() {
@@ -628,6 +638,15 @@ func initDB() {
 	);`)
 	if err != nil {
 		log.Fatalf("创建friends表失败: %v", err)
+	}
+
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS blocked_users (
+		blocker TEXT NOT NULL,
+		blocked TEXT NOT NULL,
+		PRIMARY KEY (blocker, blocked)
+	);`)
+	if err != nil {
+		log.Fatalf("创建blocked_users表失败: %v", err)
 	}
 
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS friend_requests (
@@ -1135,33 +1154,98 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			if authenticatedUser == "" {
 				continue
 			}
-			requestIDFloat, _ := payload["request_id"].(float64)
-			action, _ := payload["action"].(string)
-			requestID := int(requestIDFloat)
-			if requestID <= 0 || (action != "approve" && action != "reject") {
+			reviewAction, _ := payload["review_action"].(string)
+			requestIDValue := payload["request_id"]
+			requestID := 0
+			switch value := requestIDValue.(type) {
+			case float64:
+				requestID = int(value)
+			case string:
+				requestID, _ = strconv.Atoi(strings.TrimSpace(value))
+			}
+			if requestID <= 0 || (reviewAction != "approve" && reviewAction != "reject") {
+				conn.WriteJSON(map[string]string{"type": "friend_request_review_err", "content": "好友申请参数无效，请刷新页面后重试"})
 				continue
 			}
 
 			var fromUser, toUser, status string
 			err := db.QueryRow("SELECT from_user, to_user, status FROM friend_requests WHERE id = ?", requestID).Scan(&fromUser, &toUser, &status)
-			if err != nil || status != "pending" {
+			if err == sql.ErrNoRows || status != "pending" {
+				conn.WriteJSON(map[string]string{"type": "friend_request_review_err", "content": "好友申请不存在或已处理"})
+				continue
+			}
+			if err != nil {
+				log.Printf("查询好友申请失败: request_id=%d, err=%v", requestID, err)
+				conn.WriteJSON(map[string]string{"type": "friend_request_review_err", "content": "查询好友申请失败，请稍后重试"})
 				continue
 			}
 			if toUser != authenticatedUser {
+				conn.WriteJSON(map[string]string{"type": "friend_request_review_err", "content": "无权处理该好友申请"})
 				continue
 			}
 
-			if action == "approve" {
-				_, _ = db.Exec("INSERT OR IGNORE INTO friends (username, friend_username) VALUES (?, ?)", fromUser, toUser)
-				_, _ = db.Exec("INSERT OR IGNORE INTO friends (username, friend_username) VALUES (?, ?)", toUser, fromUser)
-				_, _ = db.Exec("UPDATE friend_requests SET status = 'approved', reviewed_at = ?, reviewed_by = ? WHERE id = ?", time.Now().Unix(), authenticatedUser, requestID)
-			} else {
-				_, _ = db.Exec("UPDATE friend_requests SET status = 'rejected', reviewed_at = ?, reviewed_by = ? WHERE id = ?", time.Now().Unix(), authenticatedUser, requestID)
+			tx, err := db.Begin()
+			if err != nil {
+				log.Printf("开启好友申请事务失败: request_id=%d, err=%v", requestID, err)
+				conn.WriteJSON(map[string]string{"type": "friend_request_review_err", "content": "处理好友申请失败，请稍后重试"})
+				continue
 			}
 
-			conn.WriteJSON(map[string]string{"type": "friend_request_reviewed", "action": action, "request_id": strconv.Itoa(requestID)})
+			if reviewAction == "approve" {
+				if _, err = tx.Exec("INSERT OR IGNORE INTO friends (username, friend_username) VALUES (?, ?)", fromUser, toUser); err == nil {
+					_, err = tx.Exec("INSERT OR IGNORE INTO friends (username, friend_username) VALUES (?, ?)", toUser, fromUser)
+				}
+				if err == nil {
+					_, err = tx.Exec("UPDATE friend_requests SET status = 'approved', reviewed_at = ?, reviewed_by = ? WHERE id = ?", time.Now().Unix(), authenticatedUser, requestID)
+				}
+			} else {
+				_, err = tx.Exec("UPDATE friend_requests SET status = 'rejected', reviewed_at = ?, reviewed_by = ? WHERE id = ?", time.Now().Unix(), authenticatedUser, requestID)
+			}
+			if err != nil {
+				_ = tx.Rollback()
+				log.Printf("处理好友申请失败: request_id=%d, action=%s, err=%v", requestID, reviewAction, err)
+				conn.WriteJSON(map[string]string{"type": "friend_request_review_err", "content": "处理好友申请失败，请稍后重试"})
+				continue
+			}
+			if err = tx.Commit(); err != nil {
+				log.Printf("提交好友申请事务失败: request_id=%d, err=%v", requestID, err)
+				conn.WriteJSON(map[string]string{"type": "friend_request_review_err", "content": "处理好友申请失败，请稍后重试"})
+				continue
+			}
+
+			conn.WriteJSON(map[string]string{"type": "friend_request_reviewed", "action": reviewAction, "request_id": strconv.Itoa(requestID)})
 			sendSyncData(fromUser)
 			sendSyncData(toUser)
+
+		case "clear_friend_requests":
+			if authenticatedUser == "" {
+				continue
+			}
+			_, err := db.Exec("DELETE FROM friend_requests WHERE from_user = ? OR to_user = ?", authenticatedUser, authenticatedUser)
+			if err != nil {
+				log.Printf("清空好友申请失败: user=%s, err=%v", authenticatedUser, err)
+				conn.WriteJSON(map[string]string{"type": "clear_friend_requests_err", "content": "清空好友申请失败，请稍后重试"})
+				continue
+			}
+			conn.WriteJSON(map[string]string{"type": "clear_friend_requests_ok"})
+			sendSyncData(authenticatedUser)
+
+		case "block_user":
+			if authenticatedUser == "" {
+				continue
+			}
+			target, _ := payload["target_user"].(string)
+			target = strings.TrimSpace(target)
+			if target == "" || target == authenticatedUser {
+				conn.WriteJSON(map[string]string{"type": "block_user_err", "content": "无法屏蔽该用户"})
+				continue
+			}
+			if _, err := db.Exec("INSERT OR IGNORE INTO blocked_users (blocker, blocked) VALUES (?, ?)", authenticatedUser, target); err != nil {
+				conn.WriteJSON(map[string]string{"type": "block_user_err", "content": "屏蔽失败，请稍后重试"})
+				continue
+			}
+			conn.WriteJSON(map[string]string{"type": "block_user_ok", "target_user": target})
+			sendSyncData(authenticatedUser)
 
 		case "delete_friend":
 			if authenticatedUser == "" {
@@ -1579,12 +1663,30 @@ func sendSyncData(username string) {
 		friendRequestsRows.Close()
 	}
 
+	blockedRows, err := db.Query("SELECT blocked FROM blocked_users WHERE blocker = ?", username)
+	blockedUsers := make([]string, 0)
+	if err == nil {
+		for blockedRows.Next() {
+			var blocked string
+			_ = blockedRows.Scan(&blocked)
+			blockedUsers = append(blockedUsers, blocked)
+		}
+		blockedRows.Close()
+	}
+
 	_ = conn.WriteJSON(map[string]interface{}{
 		"type":            "sync_data",
 		"friends":         friends,
 		"groups":          syncGroups,
 		"friend_requests": friendRequests,
+		"blocked_users":   blockedUsers,
 	})
+}
+
+func isUserBlocked(blocker, blocked string) bool {
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM blocked_users WHERE blocker = ? AND blocked = ?", blocker, blocked).Scan(&count)
+	return err == nil && count > 0
 }
 
 func broadcastMessage(msg Message) {
@@ -1617,8 +1719,10 @@ func broadcastMessage(msg Message) {
 
 	switch msg.TargetType {
 	case "public":
-		for _, conn := range clients {
-			_ = conn.WriteJSON(msgWithType)
+		for username, conn := range clients {
+			if !isUserBlocked(username, msg.Sender) {
+				_ = conn.WriteJSON(msgWithType)
+			}
 		}
 	case "group":
 		gID, _ := strconv.Atoi(msg.TargetID)
@@ -1627,7 +1731,7 @@ func broadcastMessage(msg Message) {
 			for rows.Next() {
 				var member string
 				_ = rows.Scan(&member)
-				if conn, online := clients[member]; online {
+				if conn, online := clients[member]; online && !isUserBlocked(member, msg.Sender) {
 					_ = conn.WriteJSON(msgWithType)
 				}
 			}
@@ -1638,7 +1742,7 @@ func broadcastMessage(msg Message) {
 			_ = conn.WriteJSON(msgWithType)
 		}
 		if msg.Sender != msg.TargetID {
-			if conn, online := clients[msg.TargetID]; online {
+			if conn, online := clients[msg.TargetID]; online && !isUserBlocked(msg.TargetID, msg.Sender) {
 				_ = conn.WriteJSON(msgWithType)
 			}
 		}

@@ -72,6 +72,14 @@
         let avatarFile = null;
         let originalUsername = '';
 
+        function applyProfileBackground(backgroundUrl) {
+            const hasBackground = !!backgroundUrl && backgroundUrl !== 'none';
+            document.body.style.backgroundImage = hasBackground ? `url("${backgroundUrl}")` : 'none';
+            document.body.style.backgroundSize = hasBackground ? 'cover' : '';
+            document.body.style.backgroundPosition = hasBackground ? 'center' : '';
+            document.body.style.backgroundRepeat = hasBackground ? 'no-repeat' : '';
+        }
+
         function checkForChanges() {
             const saveBtn = document.getElementById('saveBtn');
             if (!saveBtn) return;
@@ -135,6 +143,8 @@
                     document.body.style.backgroundAttachment = 'scroll';
                     document.body.style.backgroundRepeat = 'repeat';
                     document.body.style.backgroundSize = 'auto';
+
+                    applyProfileBackground(user.background_url || '');
 
                     // 设置头像
                     const avatarEl = document.getElementById('avatarImg');
@@ -373,13 +383,7 @@
             // 只在账户卡片容器内预览，不污染整页背景
             const reader = new FileReader();
             reader.onload = (e) => {
-                const container = document.querySelector('.container');
-                if (container) {
-                    container.style.backgroundImage = `url('${e.target.result}')`;
-                    container.style.backgroundSize = 'cover';
-                    container.style.backgroundPosition = 'center';
-                    container.style.backgroundRepeat = 'no-repeat';
-                }
+                applyProfileBackground(e.target.result);
                 backgroundFile = file;
                 checkForChanges();
             };

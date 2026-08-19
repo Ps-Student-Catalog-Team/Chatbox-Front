@@ -81,12 +81,20 @@ class AIChatController {
     }
 
     openAIChat() {
-        this.elements.modal.classList.remove('hidden');
+        if (window.openModalWithAnimation) {
+            window.openModalWithAnimation(this.elements.modal);
+        } else {
+            this.elements.modal.classList.remove('hidden');
+        }
         setTimeout(() => this.elements.input?.focus(), 50);
     }
 
     closeAIChat() {
-        this.elements.modal.classList.add('hidden');
+        if (window.closeModalWithAnimation) {
+            window.closeModalWithAnimation(this.elements.modal);
+        } else {
+            this.elements.modal.classList.add('hidden');
+        }
         if (this.state.isSending && this.abortController) {
             this.abortController.abort();
             this.abortController = null;
