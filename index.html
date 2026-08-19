@@ -568,11 +568,23 @@
                             ↓ 最新
                         </button>
                         <!-- 三点菜单按钮 -->
-                        <button id="chatMenuBtn" onclick="toggleChatMenu()" class="text-base text-slate-400 hover:text-slate-600 px-2 md:px-3 py-1 rounded-lg hover:bg-slate-100 transition cursor-pointer" title="更多选项">
+                        <button id="chatMenuBtn" type="button" onclick="toggleChatMenu()" aria-label="打开聊天室菜单" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-xl font-bold leading-none text-slate-500 shadow-sm transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 cursor-pointer" title="聊天室菜单">
                             ⋮
                         </button>
                         <!-- 三点菜单 -->
                         <div id="chatMenu" class="hidden absolute right-0 top-10 bg-white border border-slate-200 rounded-lg shadow-lg z-50 w-48 text-sm">
+                            <div id="commonMenuItems">
+                                <button onclick="showChatMembers()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
+                                    <span>👥</span> 成员
+                                </button>
+                                <button onclick="showBlockedUsers(event)" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
+                                    <span>🚫</span> 已屏蔽用户
+                                </button>
+                                <button onclick="toggleNotificationSettingsModal(true); toggleChatMenu()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
+                                    <span>🔔</span> 消息提醒
+                                </button>
+                                <hr class="my-1">
+                            </div>
                             <!-- 群聊菜单项 -->
                             <div id="groupMenuItems" class="hidden">
                                 <button onclick="openGroupManagement()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
@@ -602,12 +614,6 @@
                             <div id="publicMenuItems" class="hidden">
                                 <button onclick="refreshAllMessages()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
                                     <span>🔄</span> 刷新消息
-                                </button>
-                            </div>
-                            <!-- AI 菜单项 -->
-                            <div id="aiMenuItems" class="hidden">
-                                <button onclick="clearAIChatHistory()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
-                                    <span>🗑️</span> 清空对话记录
                                 </button>
                             </div>
                         </div>
@@ -677,6 +683,22 @@
             <div id="groupMembersModalList" class="space-y-2"></div>
             <div class="flex justify-end pt-2 border-t border-slate-100">
                 <button onclick="toggleGroupMembersModal(false)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer font-medium">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="blockedUsersModal" class="hidden fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-3 md:p-0 overlay-fade" onclick="if (event.target === this) toggleBlockedUsersModal(false)">
+        <div class="bg-white rounded-2xl shadow-2xl p-4 md:p-6 w-full md:w-96 space-y-4 max-h-[80vh] overflow-y-auto modal-pop">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="text-sm font-bold text-slate-800">已屏蔽用户</h3>
+                    <p class="text-xs text-slate-500 mt-1">取消屏蔽后，将重新看到对方发言</p>
+                </div>
+                <button onclick="toggleBlockedUsersModal(false)" class="text-xl text-slate-400 hover:text-slate-600 cursor-pointer">✕</button>
+            </div>
+            <div id="blockedUsersModalList" class="space-y-2"></div>
+            <div class="flex justify-end pt-2 border-t border-slate-100">
+                <button onclick="toggleBlockedUsersModal(false)" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer font-medium">关闭</button>
             </div>
         </div>
     </div>
@@ -1169,10 +1191,20 @@
                                 globalBlockedUsers.push(data.target_user);
                             }
                             renderChatBubbles();
+                            renderBlockedUsers();
                             alert(`已屏蔽 ${data.target_user} 的发言`);
+                            break;
+                        case "unblock_user_ok":
+                            globalBlockedUsers = globalBlockedUsers.filter((user) => user !== data.target_user);
+                            renderChatBubbles();
+                            renderBlockedUsers();
+                            alert(`已取消屏蔽 ${data.target_user}`);
                             break;
                         case "block_user_err":
                             alert(data.content || '屏蔽失败，请稍后重试');
+                            break;
+                        case "unblock_user_err":
+                            alert(data.content || '取消屏蔽失败，请稍后重试');
                             break;
                         case "create_group_ok":
                             const newGroup = {
@@ -1216,7 +1248,7 @@
                             if (data && data.extensions) {
                                 window._extensionsCache = data.extensions;
                                 renderExtensionsModal();
-                                AIChat.updateSidebarExtensions();
+                                window.dispatchEvent(new CustomEvent('extensions-updated'));
                             }
                             break;
                         case "ai_config_update":
@@ -2035,6 +2067,19 @@
             if (input) input.value = username;
         }
 
+        function toggleBlockUser(username) {
+            hideUserContextMenu();
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('连接异常，无法修改屏蔽状态');
+                return;
+            }
+            const isBlocked = globalBlockedUsers.includes(username);
+            ws.send(JSON.stringify({
+                action: isBlocked ? 'unblock_user' : 'block_user',
+                target_user: username
+            }));
+        }
+
         function showUserContextMenu(event, username) {
             hideUserContextMenu();
             hideMessageContextMenu();
@@ -2045,20 +2090,12 @@
             menu.style.top = `${Math.min(Math.max(8, event.clientY), window.innerHeight - 310)}px`;
 
             const actions = [
-                { icon: '◯', label: '发送消息', action: () => sendMessageToUser(username) },
                 { icon: '@', label: 'TA', action: () => mentionUser(username) },
                 { icon: '▤', label: '查看资料', action: () => { hideUserContextMenu(); openProfile(username); } },
                 { icon: '♙', label: '添加好友', action: () => addUserFromContextMenu(username) },
                 { divider: true },
                 { icon: '△', label: '举报', action: () => { hideUserContextMenu(); alert('举报功能暂未开放'); } },
-                { icon: '◉', label: '屏蔽此人发言', action: () => {
-                    hideUserContextMenu();
-                    if (!ws || ws.readyState !== WebSocket.OPEN) {
-                        alert('连接异常，无法屏蔽此人');
-                        return;
-                    }
-                    ws.send(JSON.stringify({ action: 'block_user', target_user: username }));
-                } }
+                { icon: globalBlockedUsers.includes(username) ? '◉' : '◉', label: globalBlockedUsers.includes(username) ? '取消屏蔽此人发言' : '屏蔽此人发言', action: () => toggleBlockUser(username) }
             ];
 
             actions.forEach(item => {
@@ -3224,6 +3261,71 @@
             }
         }
 
+        function showChatMembers() {
+            toggleChatMenu();
+            if (!activeTarget) return;
+            if (activeTarget.type === 'group') {
+                showGroupMembers();
+                return;
+            }
+
+            const sessionKey = `${activeTarget.type}:${activeTarget.id}`;
+            const names = new Set([currentUser]);
+            (cacheMessages[sessionKey] || []).forEach((message) => {
+                if (message.sender) names.add(message.sender);
+            });
+            const titleEl = document.getElementById('groupMembersModalTitle');
+            const listEl = document.getElementById('groupMembersModalList');
+            titleEl.innerText = activeTarget.type === 'public' ? '公共聊天室成员' : `会话成员：${activeTarget.name || activeTarget.id}`;
+            listEl.innerHTML = [...names].map((name, index) => `
+                <div class="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50 text-sm">
+                    <span class="font-medium text-slate-800">${index + 1}. ${escapeHtml(name)}</span>
+                    <span class="text-[11px] ${name === currentUser ? 'text-blue-600' : 'text-slate-500'}">${name === currentUser ? '我' : '参与者'}</span>
+                </div>
+            `).join('');
+            toggleGroupMembersModal(true);
+        }
+
+        function renderBlockedUsers() {
+            const list = document.getElementById('blockedUsersModalList');
+            if (!list) return;
+            if (globalBlockedUsers.length === 0) {
+                list.innerHTML = '<div class="py-6 text-center text-sm text-slate-400">暂无屏蔽用户</div>';
+                return;
+            }
+            list.innerHTML = globalBlockedUsers.map((username) => `
+                <div class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <span class="truncate text-sm font-medium text-slate-800">${escapeHtml(username)}</span>
+                    <button type="button" onclick="toggleBlockUser(${JSON.stringify(username)})" class="shrink-0 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-100">取消屏蔽</button>
+                </div>
+            `).join('');
+        }
+
+        function showBlockedUsers(event) {
+            event?.stopPropagation();
+            toggleChatMenu();
+            const modal = document.getElementById('blockedUsersModal');
+            if (modal && modal.parentElement !== document.body) {
+                document.body.appendChild(modal);
+            }
+            renderBlockedUsers();
+            toggleBlockedUsersModal(true);
+        }
+
+        function toggleBlockedUsersModal(show) {
+            const modal = document.getElementById('blockedUsersModal');
+            if (!modal) return;
+            if (show) {
+                renderBlockedUsers();
+                modal.classList.remove('hidden', 'modal-closing');
+                modal.style.display = 'flex';
+            } else {
+                modal.classList.add('hidden');
+                modal.classList.remove('modal-closing');
+                modal.style.display = '';
+            }
+        }
+
 
         async function confirmQuitGroup() {
             if (!activeTarget || activeTarget.type !== 'group') {
@@ -3353,7 +3455,7 @@
                 try { window._extensionsCache = s ? JSON.parse(s) : {}; } catch (ee) { window._extensionsCache = {}; }
             }
             renderExtensionsModal();
-            AIChat.updateSidebarExtensions();
+            window.dispatchEvent(new CustomEvent('extensions-updated'));
         }
 
         function getExtensionsState() { return window._extensionsCache || {}; }
@@ -3367,7 +3469,7 @@
                 const updated = await resp.json();
                 window._extensionsCache = updated || {};
                 renderExtensionsModal();
-                AIChat.updateSidebarExtensions();
+                window.dispatchEvent(new CustomEvent('extensions-updated'));
             } catch (e) {
                 alert('切换扩展失败');
             }
@@ -3429,7 +3531,7 @@
             desc.innerText = isAdmin ? '选中扩展查看详情并激活。管理员可在此处开关扩展。' : '扩展由管理员控制，如需启用请联系管理员。';
             if (actBtn) { if (isAdmin) { actBtn.style.display = 'inline-block'; actBtn.dataset.key = ''; actBtn.innerText = '激活'; } else { actBtn.style.display = 'none'; } }
             // 同步侧边栏扩展入口显示
-            AIChat.updateSidebarExtensions();
+            window.dispatchEvent(new CustomEvent('extensions-updated'));
         }
 
         function showExtDetail(key) {
@@ -3478,22 +3580,6 @@
                 </div>
                 <div class="mt-4">
                     <div id="extModalList" class="max-h-64 overflow-y-auto"></div>
-                </div>
-            </div>
-        </div>
-        <!-- AI 聊天模态 -->
-        <div id="aiChatModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50" onclick="if (event.target === this) window.aiChatInstance?.closeAIChat()">
-            <div class="w-full max-w-2xl rounded-2xl bg-white p-6">
-                <div class="flex items-center justify-between">
-                    <h3 class="text-lg font-bold text-slate-800">AI 聊天</h3>
-                    <button id="aiChatCloseButton" class="rounded-full px-3 py-2 bg-slate-100">关闭</button>
-                </div>
-                <div class="mt-4">
-                    <div id="aiChatWindow" class="h-64 overflow-y-auto border border-slate-100 p-3 rounded-md bg-slate-50 text-sm text-slate-700"></div>
-                    <div class="mt-3 flex gap-2">
-                        <input id="aiPromptInput" type="text" placeholder="向 AI 提问，例如：今天天气如何？" class="flex-1 rounded-2xl border border-slate-200 px-4 py-2 text-sm outline-none">
-                        <button id="aiChatSendButton" class="rounded-2xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white">发送</button>
-                    </div>
                 </div>
             </div>
         </div>

@@ -1247,6 +1247,23 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			conn.WriteJSON(map[string]string{"type": "block_user_ok", "target_user": target})
 			sendSyncData(authenticatedUser)
 
+		case "unblock_user":
+			if authenticatedUser == "" {
+				continue
+			}
+			target, _ := payload["target_user"].(string)
+			target = strings.TrimSpace(target)
+			if target == "" || target == authenticatedUser {
+				conn.WriteJSON(map[string]string{"type": "unblock_user_err", "content": "无法取消屏蔽该用户"})
+				continue
+			}
+			if _, err := db.Exec("DELETE FROM blocked_users WHERE blocker = ? AND blocked = ?", authenticatedUser, target); err != nil {
+				conn.WriteJSON(map[string]string{"type": "unblock_user_err", "content": "取消屏蔽失败，请稍后重试"})
+				continue
+			}
+			conn.WriteJSON(map[string]string{"type": "unblock_user_ok", "target_user": target})
+			sendSyncData(authenticatedUser)
+
 		case "delete_friend":
 			if authenticatedUser == "" {
 				continue

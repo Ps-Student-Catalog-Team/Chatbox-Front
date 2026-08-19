@@ -32,6 +32,7 @@ class AIChatController {
     }
 
     init() {
+        this.ensureDOM();
         this.cacheDOM();
         if (!this.elements.modal) {
             console.warn('[AIChat] 核心 DOM 节点未找到，初始化中止。');
@@ -44,7 +45,38 @@ class AIChatController {
 
         this.updateSidebarExtensions();
         this.attachEventListeners();
+        window.addEventListener('extensions-updated', this.handleExtensionsUpdated);
     }
+
+    ensureDOM() {
+        if (document.getElementById('aiChatModal')) return;
+
+        const modal = document.createElement('div');
+        modal.id = 'aiChatModal';
+        modal.className = 'hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50';
+        modal.innerHTML = `
+            <div class="w-full max-w-2xl rounded-2xl bg-white p-6">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-bold text-slate-800">AI 聊天</h3>
+                    <button id="aiChatCloseButton" type="button" class="rounded-full px-3 py-2 bg-slate-100">关闭</button>
+                </div>
+                <div class="mt-4">
+                    <div id="aiChatWindow" class="h-64 overflow-y-auto border border-slate-100 p-3 rounded-md bg-slate-50 text-sm text-slate-700"></div>
+                    <div class="mt-3 flex gap-2">
+                        <input id="aiPromptInput" type="text" placeholder="向 AI 提问，例如：今天天气如何？" class="flex-1 rounded-2xl border border-slate-200 px-4 py-2 text-sm outline-none">
+                        <button id="aiChatSendButton" type="button" class="rounded-2xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white">发送</button>
+                    </div>
+                </div>
+            </div>`;
+        modal.addEventListener('click', event => {
+            if (event.target === modal) this.closeAIChat();
+        });
+        document.body.appendChild(modal);
+    }
+
+    handleExtensionsUpdated = () => {
+        this.updateSidebarExtensions();
+    };
 
     cacheDOM() {
         const { selectors } = this.config;
@@ -326,6 +358,7 @@ class AIChatController {
         closeButton?.removeEventListener('click', this.closeAIChat);
         input?.removeEventListener('keydown', this.handleInputKeydown);
         document.removeEventListener('keydown', this.handleDocumentKeydown);
+        window.removeEventListener('extensions-updated', this.handleExtensionsUpdated);
         
         const existingBtn = document.getElementById('btnAICHat');
         if (existingBtn) {
