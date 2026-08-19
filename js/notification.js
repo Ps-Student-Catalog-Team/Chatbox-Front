@@ -32,13 +32,11 @@ const NotificationManager = (() => {
         
         if ('Notification' in window) {
             if (Notification.permission === 'granted') {
-                console.log('✓ 浏览器通知已启用');
                 return true;
             } else if (Notification.permission !== 'denied') {
                 try {
                     const permission = await Notification.requestPermission();
                     if (permission === 'granted') {
-                        console.log('✓ 浏览器通知权限已授予');
                         return true;
                     }
                 } catch (err) {
@@ -282,7 +280,6 @@ const NotificationManager = (() => {
         const merged = { ...CONFIG, ...settings };
         localStorage.setItem('notification_settings', JSON.stringify(merged));
         Object.assign(CONFIG, merged);
-        console.log('✓ 提醒设置已保存');
     }
 
     // 从本地存储加载提醒设置
@@ -292,7 +289,6 @@ const NotificationManager = (() => {
             if (saved) {
                 const settings = JSON.parse(saved);
                 Object.assign(CONFIG, settings);
-                console.log('✓ 提醒设置已加载');
             }
         } catch (err) {
             console.warn('加载提醒设置失败:', err);
@@ -306,7 +302,7 @@ const NotificationManager = (() => {
 
     // 窗口获得焦点时清空未读计数
     window.addEventListener('focus', () => {
-        if (activeTarget) {
+        if (typeof activeTarget !== 'undefined' && activeTarget) {
             resetUnreadCount(activeTarget.type, activeTarget.id);
         }
     });

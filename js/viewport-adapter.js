@@ -41,7 +41,6 @@ class ViewportAdapter {
         this.updateCSSVariables();
         this.setupListeners();
         this.applyFoldableStyles();
-        console.log(`[ViewportAdapter] 已初始化 | 手机: ${this.isPhone} | 折叠屏: ${this.isFoldable}`);
     }
 
     /**
@@ -218,7 +217,6 @@ class ViewportAdapter {
         // 延迟一点更新，等待系统完成方向变化
         setTimeout(() => {
             this.updateCSSVariables();
-            console.log(`[ViewportAdapter] 方向改变: ${window.innerWidth}x${window.innerHeight}`);
         }, 300);
     }
 
@@ -226,7 +224,6 @@ class ViewportAdapter {
      * 处理折叠线变化
      */
     handleFoldChange() {
-        console.log('[ViewportAdapter] 检测到折叠线变化');
         this.updateCSSVariables();
         // 重新布局
         document.body.offsetHeight; // 强制重排

@@ -15,6 +15,7 @@
     <script src="./js/tailwind.browser.js"></script>
     <script src="./js/notification.js"></script>
     <script src="./js/chatHistory.js"></script>
+    <script src="./js/confirm-dialog.js"></script>
     <script src="./js/aiChat.js"></script>
     <!-- 根据设备自动加载对应 CSS -->
     <link rel="stylesheet" href="./css/style-desktop.css" media="(min-width: 768px)">
@@ -944,8 +945,8 @@
             window.location.href = url;
         }
 
-        function logout() {
-            if (confirm('确认要注销账号吗？\n\n此操作会登出当前账户。')) {
+        async function logout() {
+            if (await showConfirmDialog('注销后需要重新登录。', '确认注销账号？', 'account')) {
                 clearAuthData();
                 if (ws) {
                     ws.close();
@@ -1064,8 +1065,9 @@
                                     if (info.background_url) {
                                         await applyBackgroundUrl(info.background_url, token);
                                     }
-                                    if (info.font_url) {
-                                        await applyFontUrl(info.font_url, token);
+                                    const savedFontUrl = localStorage.getItem('lanchat_font_url') || info.font_url || '';
+                                    if (savedFontUrl) {
+                                        await applyFontUrl(savedFontUrl, token);
                                     }
                                 } catch (err) { console.warn('加载用户资产失败', err); }
                             })();
@@ -1307,14 +1309,17 @@
                 }
                 const fontName = 'userfont_' + Math.random().toString(36).slice(2,8);
                 const style = document.createElement('style');
-                const ext = (fontSrc.split('.').pop() || '').split('?')[0].toLowerCase();
+                const ext = (url.split('.').pop() || '').split('?')[0].toLowerCase();
                 let format = 'truetype';
                 if (ext === 'woff2') format = 'woff2';
                 else if (ext === 'woff') format = 'woff';
                 else if (ext === 'otf') format = 'opentype';
                 else if (ext === 'ttf') format = 'truetype';
-                style.innerText = `@font-face { font-family: "${fontName}"; src: url("${fontSrc}") format("${format}"); font-display: swap; } body { font-family: "${fontName}", sans-serif !important; }`;
+                style.innerText = `@font-face { font-family: "${fontName}"; src: url("${fontSrc}") format("${format}"); font-display: swap; } html, body, body * { font-family: "${fontName}", sans-serif !important; }`;
                 document.head.appendChild(style);
+                await document.fonts.load(`16px "${fontName}"`);
+                document.documentElement.style.fontFamily = `"${fontName}", sans-serif`;
+                document.body.style.fontFamily = `"${fontName}", sans-serif`;
             } catch (err) { console.warn('applyFontUrl error', err); }
         }
 
@@ -2541,13 +2546,13 @@
             }
         }
 
-        function deleteFriend() {
+        async function deleteFriend() {
             if (!activeTarget || activeTarget.type !== 'private') {
                 alert("请先选择一个好友私聊");
                 return;
             }
             const targetUser = activeTarget.id;
-            const confirmed = confirm(`确定要删除好友 ${targetUser} 吗？`);
+            const confirmed = await showConfirmDialog(`删除好友 ${targetUser} 后将无法恢复。`, '确认删除好友？', 'delete');
             if (!confirmed) return;
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ action: "delete_friend", target_user: targetUser }));
@@ -2804,15 +2809,15 @@
         /**
          * 确认解散群聊
          */
-        function confirmDisbandGroup() {
+        async function confirmDisbandGroup() {
             if (!activeTarget || activeTarget.type !== 'group') {
                 alert("请先选择一个群聊");
                 return;
             }
 
-            const confirmResult = confirm(
+            const confirmResult = await showConfirmDialog(
                 `确定要解散群聊 "${activeTarget.name}" 吗？\n\n` +
-                "此操作不可撤销，所有群成员将被移出，聊天记录将被保留。"
+                "此操作不可撤销，所有群成员将被移出，聊天记录将被保留。", '确认解散群聊？', 'delete'
             );
 
             if (confirmResult) {
@@ -3048,13 +3053,13 @@
         }
 
 
-        function confirmQuitGroup() {
+        async function confirmQuitGroup() {
             if (!activeTarget || activeTarget.type !== 'group') {
                 alert("请先选择一个群聊");
                 return;
             }
 
-            const confirmed = confirm(`确定要退出群聊 "${activeTarget.name}" 吗？`);
+            const confirmed = await showConfirmDialog(`退出群聊 "${activeTarget.name}" 后将无法继续查看。`, '确认退出群聊？', 'exit');
             if (confirmed) {
                 quitGroup();
             }
@@ -3078,13 +3083,13 @@
         /**
          * 退出群聊
          */
-        function quitGroup() {
+        async function quitGroup() {
             if (!activeTarget || activeTarget.type !== 'group') {
                 alert("请先选择一个群聊");
                 return;
             }
 
-            const confirmResult = confirm(`确定要退出群聊 "${activeTarget.name}" 吗？`);
+            const confirmResult = await showConfirmDialog(`退出群聊 "${activeTarget.name}" 后将无法继续查看。`, '确认退出群聊？', 'exit');
 
             if (confirmResult) {
                 if (ws && ws.readyState === WebSocket.OPEN) {

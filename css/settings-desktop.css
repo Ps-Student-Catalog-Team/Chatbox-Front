@@ -1,13 +1,5 @@
-@font-face {
-    font-family: 'Kca';
-    src: url('../ttf/kca.ttf') format('truetype');
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-}
-
 html, body {
-    font-family: 'Kca', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 /* Desktop-specific helpers for settings page */
@@ -34,4 +26,21 @@ input[type="text"], button {
     opacity: 1;
     padding-top: 1rem;
     padding-bottom: 1rem;
+}
+
+.bg-visibility-modal {
+    opacity: 0;
+    transition: opacity 180ms ease;
+}
+.bg-visibility-modal.visible {
+    opacity: 1;
+}
+.bg-visibility-panel {
+    opacity: 0;
+    transform: translateY(16px) scale(0.94);
+    transition: opacity 220ms ease, transform 220ms cubic-bezier(.2,.8,.2,1);
+}
+.bg-visibility-modal.visible .bg-visibility-panel {
+    opacity: 1;
+    transform: translateY(0) scale(1);
 }

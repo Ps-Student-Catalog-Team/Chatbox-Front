@@ -97,6 +97,7 @@ func main() {
 	http.HandleFunc("/ws", handleWebSocket)
 	http.HandleFunc("/api/upload", handleUpload)
 	http.HandleFunc("/api/assets", handleAssets)
+	http.HandleFunc("/api/assets/delete", handleDeleteAsset)
 	http.HandleFunc("/api/user/info", handleUserInfo)
 	http.HandleFunc("/api/user/update", handleUserUpdate)
 	http.HandleFunc("/api/user/avatar", handleUserAvatar)
@@ -2324,6 +2325,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	visibility := strings.ToLower(strings.TrimSpace(r.FormValue("visibility"))) // public or private
 	username := strings.TrimSpace(r.FormValue("username"))
+	fileType := strings.ToLower(strings.TrimSpace(r.FormValue("file_type")))
 	if username == "" {
 		username = "anonymous"
 	}
@@ -2346,6 +2348,22 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	randBytes := make([]byte, 8)
 	_, _ = rand.Read(randBytes)
 	newFileName := fmt.Sprintf("%d_%s%s", time.Now().UnixNano(), hex.EncodeToString(randBytes), ext)
+	if fileType == "font" {
+		customName := strings.TrimSpace(r.FormValue("custom_name"))
+		if utf8.RuneCountInString(customName) > 15 {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "字体名称不能超过15个字符"})
+			return
+		}
+		customName = strings.TrimSuffix(customName, filepath.Ext(customName))
+		customName = strings.NewReplacer("/", "", "\\", "", ":", "", "*", "", "?", "", "\"", "", "<", "", ">", "", "|", "").Replace(customName)
+		if customName != "" {
+			newFileName = customName + ext
+			if _, statErr := os.Stat(filepath.Join(uploadDir, newFileName)); statErr == nil {
+				newFileName = fmt.Sprintf("%s_%d%s", customName, time.Now().UnixNano(), ext)
+			}
+		}
+	}
 	savePath := filepath.Join(uploadDir, newFileName)
 
 	out, err := os.Create(savePath)
@@ -2474,6 +2492,48 @@ func handleAssets(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"assets": assets})
+}
+
+func handleDeleteAsset(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	token := getTokenFromHeader(r)
+	if token == "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	user, err := getUsernameByToken(token)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	assetURL := r.URL.Query().Get("url")
+	prefix := "/photos/uploads/" + user + "/"
+	if assetURL == "" || !strings.HasPrefix(assetURL, prefix) {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	relativeName := strings.TrimPrefix(assetURL, prefix)
+	if relativeName == "" || strings.Contains(relativeName, "..") || strings.ContainsAny(relativeName, `/\\`) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	filePath := filepath.Join("./photos/uploads", user, relativeName)
+	if err := os.Remove(filePath); err != nil {
+		if os.IsNotExist(err) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	_, _ = db.Exec("UPDATE users SET background_url = ? WHERE username = ? AND background_url = ?", "none", user, assetURL)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"url": assetURL})
 }
 
 func handleResetPassword(w http.ResponseWriter, r *http.Request) {

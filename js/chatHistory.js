@@ -51,13 +51,13 @@ function refreshAllMessages() {
 }
 
 
-function clearPrivateChatHistory() {
+async function clearPrivateChatHistory() {
     if (!activeTarget || activeTarget.type !== 'private') {
         alert("请先选择一个私聊");
         return;
     }
 
-    const confirmed = confirm(`确定要清空与 "${activeTarget.name}" 的聊天记录吗？\n※ 此操作仅清除本地记录，对方的记录不会被删除`);
+    const confirmed = await showConfirmDialog(`清空与 "${activeTarget.name}" 的聊天记录后无法恢复。\n※ 此操作仅清除本地记录，对方的记录不会被删除`, '确认清空？', 'clear');
     if (confirmed) {
         const sessionKey = `private:${activeTarget.id}`;
         cacheMessages[sessionKey] = [];

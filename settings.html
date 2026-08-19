@@ -14,6 +14,7 @@
     <script src="./js/viewport-adapter.js"></script>
     <script src="./js/tailwind.browser.js"></script>
     <script src="./js/notification.js"></script>
+    <script src="./js/confirm-dialog.js"></script>
     <script>
         window.addEventListener('pageshow', function(event) {
             if (event.persisted) {
@@ -39,7 +40,6 @@
                 <section class="space-y-4 bg-slate-50 p-5 rounded-3xl border border-slate-100">
                     <div class="flex items-center justify-between gap-4">
                         <div>
-                            <h2 class="text-lg font-semibold text-slate-900">账户设置</h2>
                             <p class="text-sm text-slate-500">修改当前登录账号名称。</p>
                         </div>
                         <a id="passwordResetLink" href="forgot-password.html" class="text-sm font-semibold text-blue-600 hover:text-blue-700">修改密码</a>
@@ -120,36 +120,82 @@
                     <div id="bgPanel" class="mt-4 hidden collapsible-panel">
                         <div class="flex items-center justify-between mb-3">
                             <div class="flex items-center gap-2">
-                                <button onclick="document.getElementById('personalBgInput').click()" class="px-4 py-2 bg-blue-600 text-white rounded-2xl">上传背景</button>
-                                <div class="text-sm text-slate-500">可见性：<label class="ml-2"><input type="radio" name="bgVisibility" value="private" checked> 私密</label><label class="ml-2"><input type="radio" name="bgVisibility" value="public"> 公开</label></div>
+                                <button onclick="openUploadVisibilityChoice()" class="px-4 py-2 bg-blue-600 text-white rounded-2xl">上传背景</button>
                             </div>
-                            <button class="px-3 py-1 text-sm bg-slate-100 rounded" onclick="toggleCollapse('userBgContainer')">我的背景 ▾</button>
                         </div>
                         <input id="personalBgInput" type="file" accept="image/*" class="hidden" onchange="uploadAsset('personalBgInput','background')" />
+                        <input type="radio" name="bgVisibility" value="private" checked class="hidden">
+                        <input type="radio" name="bgVisibility" value="public" class="hidden">
 
                         <div class="mb-4">
                             <div class="text-sm font-semibold text-slate-700 mb-2">网页背景预览</div>
-                            <div id="bgPreviewFrame" class="relative h-28 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-inner">
-                                <div id="bgPreviewLayer" class="absolute inset-0"></div>
-                                <div class="absolute inset-x-0 bottom-0 bg-black/20 px-3 py-2 text-xs font-medium text-white backdrop-blur-[1px]">当前网页背景</div>
+                            <div id="bgPreviewFrame" class="relative isolate h-64 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-inner md:h-80">
+                                <div aria-hidden="true" class="pointer-events-none absolute inset-2 z-10 flex overflow-hidden rounded-xl border border-white/30 text-[8px] shadow-lg sm:inset-3 sm:text-[10px]">
+                                    <div class="flex w-7 shrink-0 flex-col items-center justify-between bg-slate-950/85 py-2 text-white/80 sm:w-10 sm:py-3">
+                                        <div class="flex flex-col items-center gap-2 sm:gap-3">
+                                            <div class="flex h-4 w-4 items-center justify-center rounded-md bg-blue-500 text-[7px] font-bold sm:h-6 sm:w-6 sm:text-[9px]">U</div>
+                                            <span class="text-white">💬</span>
+                                            <span>📞</span>
+                                            <span>⚙</span>
+                                        </div>
+                                        <span>↪</span>
+                                    </div>
+                                    <div class="flex w-24 shrink-0 flex-col border-r border-white/20 bg-slate-50/80 sm:w-36">
+                                        <div class="flex h-7 items-center border-b border-slate-200/70 px-2 font-semibold text-slate-700 sm:h-9 sm:px-3">最近会话</div>
+                                        <div class="space-y-1 p-1.5 sm:p-2">
+                                            <div class="flex items-center gap-1.5 rounded-md bg-blue-100/80 px-1.5 py-1 text-blue-800 sm:gap-2 sm:px-2">
+                                                <span class="flex h-3 w-3 items-center justify-center rounded-full bg-blue-500 text-[6px] text-white sm:h-4 sm:w-4">公</span>
+                                                <span class="truncate">公共聊天室</span>
+                                            </div>
+                                            <div class="flex items-center gap-1.5 px-1.5 py-1 text-slate-500 sm:gap-2 sm:px-2"><span class="h-3 w-3 rounded-full bg-emerald-400 sm:h-4 sm:w-4"></span><span class="truncate">好友消息</span></div>
+                                            <div class="flex items-center gap-1.5 px-1.5 py-1 text-slate-500 sm:gap-2 sm:px-2"><span class="h-3 w-3 rounded-full bg-amber-400 sm:h-4 sm:w-4"></span><span class="truncate">项目讨论组</span></div>
+                                        </div>
+                                    </div>
+                                    <div class="relative flex min-w-0 flex-1 flex-col bg-transparent">
+                                        <div id="bgPreviewLayer" class="pointer-events-none absolute inset-0 z-0"></div>
+                                        <div class="relative z-10 flex h-7 items-center justify-between border-b border-white/50 bg-white/75 px-2 text-slate-700 sm:h-9 sm:px-3">
+                                            <div><div class="font-bold">公共聊天室</div><div class="text-[7px] text-slate-400 sm:text-[8px]">通道就绪</div></div>
+                                            <span class="text-sm text-slate-400">⋮</span>
+                                        </div>
+                                        <div class="relative z-10 flex-1 space-y-1.5 overflow-hidden p-2 sm:space-y-2 sm:p-3">
+                                            <div class="w-fit max-w-[72%] rounded-lg bg-white/85 px-2 py-1 text-slate-600 shadow-sm">你好，欢迎来到聊天室</div>
+                                            <div class="ml-auto w-fit max-w-[72%] rounded-lg bg-blue-500/90 px-2 py-1 text-white shadow-sm">背景预览效果</div>
+                                            <div class="w-fit max-w-[72%] rounded-lg bg-white/85 px-2 py-1 text-slate-600 shadow-sm">图片会铺满聊天区域</div>
+                                        </div>
+                                        <div class="relative z-10 flex items-center gap-1 border-t border-white/50 bg-white/75 p-1.5 sm:gap-2 sm:p-2">
+                                            <span class="text-sm text-slate-400">📎</span>
+                                            <div class="h-4 flex-1 rounded-md border border-slate-200 bg-slate-50/80 sm:h-5"></div>
+                                            <div class="rounded-md bg-blue-500 px-2 py-1 text-white">发送</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="pointer-events-none absolute right-4 top-4 z-20 rounded-full bg-slate-900/60 px-2 py-1 text-[9px] font-medium text-white backdrop-blur-sm sm:right-5 sm:top-5 sm:text-[10px]">网页背景预览</div>
                             </div>
                         </div>
 
-                        <div id="userBgContainer" class="mb-4">
-                            <div class="text-sm font-semibold text-slate-700 mb-2">我的背景</div>
-                            <div id="userBgList" class="flex flex-wrap gap-2"></div>
+                        <div class="mb-4">
+                            <div class="mb-2 flex items-center justify-between gap-3">
+                                <div class="text-sm font-semibold text-slate-700">我的背景</div>
+                                <button id="userBgContainerToggleBtn" class="px-3 py-1 text-sm bg-slate-100 rounded" onclick="toggleCollapse('userBgContainer')">折叠</button>
+                            </div>
+                            <div id="userBgContainer">
+                                <div id="userBgList" class="flex flex-wrap gap-2"></div>
+                            </div>
                         </div>
 
                         <div>
                             <div class="flex items-center justify-between mb-2">
                                 <div class="text-sm font-semibold text-slate-700">公共背景</div>
                                 <div class="flex items-center gap-2">
-                                    <button class="px-3 py-1 text-sm bg-slate-100 rounded" onclick="toggleCollapse('publicBgContainer')">折叠/展开</button>
-                                    <button class="px-3 py-1 text-sm bg-slate-100 rounded" onclick="openGallery(window.publicBgAssets, '公共背景')">全览并选择</button>
+                                    <button id="publicBgContainerToggleBtn" class="px-3 py-1 text-sm bg-slate-100 rounded" onclick="toggleCollapse('publicBgContainer')">折叠</button>
                                 </div>
                             </div>
                             <div id="publicBgContainer">
                                 <div id="publicBgList" class="flex flex-wrap gap-2 mb-4"></div>
+                                <div class="mb-3 flex justify-start">
+                                    <button class="px-3 py-1 text-sm bg-slate-100 rounded" onclick="openGallery(window.publicBgAssets, '公共背景')">全览并选择</button>
+                                </div>
+                                <div id="publicColorPalette"></div>
                             </div>
                         </div>
                     </div>
@@ -158,11 +204,13 @@
                     <div id="fontPanel" class="mt-4 hidden collapsible-panel">
                         <div class="flex items-center justify-between mb-3">
                             <div class="flex items-center gap-2">
-                                <button onclick="document.getElementById('personalFontInput').click()" class="px-4 py-2 bg-blue-600 text-white rounded-2xl">上传字体</button>
-                                <div class="text-sm text-slate-500">可见性：<label class="ml-2"><input type="radio" name="fontVisibility" value="private" checked> 私密</label><label class="ml-2"><input type="radio" name="fontVisibility" value="public"> 公开</label></div>
+                                <button onclick="openUploadVisibilityChoice('font')" class="px-4 py-2 bg-blue-600 text-white rounded-2xl">上传字体</button>
+                                <a href="https://www.fonts.net.cn/" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700">获取字体</a>
                             </div>
                         </div>
                         <input id="personalFontInput" type="file" accept=".ttf,.otf,.woff,.woff2" class="hidden" onchange="uploadAsset('personalFontInput','font')" />
+                        <input type="radio" name="fontVisibility" value="private" checked class="hidden">
+                        <input type="radio" name="fontVisibility" value="public" class="hidden">
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
@@ -191,14 +239,19 @@
         function showToast(message, isError = false) {
             const toast = document.createElement('div');
             toast.innerText = message;
-            toast.className = `fixed bottom-6 left-1/2 z-50 w-auto max-w-xs -translate-x-1/2 rounded-2xl px-4 py-3 text-sm font-medium text-white shadow-lg transition-opacity duration-300 ${isError ? 'bg-red-500' : 'bg-slate-900'}`;
+            toast.className = `fixed bottom-6 left-1/2 z-50 w-auto max-w-xs -translate-x-1/2 rounded-2xl px-4 py-3 text-sm font-medium text-white shadow-lg ${isError ? 'bg-red-500' : 'bg-slate-900'}`;
             toast.style.opacity = '0';
+            toast.style.transform = 'translate(-50%, 22px) scaleX(0.55) scaleY(0.82)';
+            toast.style.transformOrigin = 'center center';
+            toast.style.transition = 'transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 220ms ease';
             document.body.appendChild(toast);
             requestAnimationFrame(() => {
                 toast.style.opacity = '1';
+                toast.style.transform = 'translate(-50%, 0) scaleX(1) scaleY(1)';
             });
             setTimeout(() => {
                 toast.style.opacity = '0';
+                toast.style.transform = 'translate(-50%, 22px) scaleX(0.55) scaleY(0.82)';
                 setTimeout(() => toast.remove(), 300);
             }, 2600);
         }
@@ -236,7 +289,7 @@
                 preview.style.backgroundImage = 'none';
                 preview.style.backgroundColor = '#f3f4f6';
                 preview.style.backgroundRepeat = 'repeat';
-                preview.style.backgroundSize = '1920px 1080px';
+                preview.style.backgroundSize = 'cover';
                 return;
             }
             if (value.startsWith('solid:')) {
@@ -244,13 +297,13 @@
                 preview.style.backgroundImage = 'none';
                 preview.style.backgroundColor = color;
                 preview.style.backgroundRepeat = 'repeat';
-                preview.style.backgroundSize = '1920px 1080px';
+                preview.style.backgroundSize = 'cover';
                 return;
             }
             preview.style.backgroundColor = 'transparent';
             preview.style.backgroundImage = `url('${value}')`;
-            preview.style.backgroundRepeat = 'repeat';
-            preview.style.backgroundSize = '1920px 1080px';
+            preview.style.backgroundRepeat = 'no-repeat';
+            preview.style.backgroundSize = 'cover';
         }
 
         function applyBackgroundValue(rawUrl) {
@@ -481,18 +534,61 @@
                 });
                 if (!res.ok) return;
                 const info = await res.json();
-                applyBackgroundValue(info.background_url || 'none');
+                const savedValue = info.background_url || 'none';
+                window.__currentBackgroundSourceUrl = savedValue;
+                const usableValue = savedValue.startsWith('/photos/uploads/')
+                    ? await getUsableUrlForAsset(savedValue, false)
+                    : savedValue;
+                applyBackgroundValue(usableValue || savedValue);
             } catch (err) {
                 console.warn('恢复用户背景失败', err);
             }
         }
 
+        async function restoreSavedFont() {
+            const restoreId = window.__fontSelectionGeneration || 0;
+            const token = getAuthToken();
+            const username = localStorage.getItem(authUserKey);
+            if (!token || !username) return;
+            try {
+                const res = await fetch(`/api/user/info?username=${encodeURIComponent(username)}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) return;
+                const info = await res.json();
+                const fontUrl = localStorage.getItem('lanchat_font_url') || info.font_url || '';
+                if (!fontUrl) return;
+                const fontSrc = await getUsableUrlForAsset(fontUrl, false);
+                if (!fontSrc) return;
+                const fontName = 'settingsfont_' + Math.random().toString(36).slice(2, 8);
+                const ext = (fontUrl.split('.').pop() || '').split('?')[0].toLowerCase();
+                const format = ext === 'woff2' ? 'woff2' : ext === 'woff' ? 'woff' : ext === 'otf' ? 'opentype' : 'truetype';
+                const style = document.createElement('style');
+                style.innerText = `@font-face { font-family: "${fontName}"; src: url("${fontSrc}") format("${format}"); font-display: swap; } html, body, body * { font-family: "${fontName}", sans-serif !important; }`;
+                document.head.appendChild(style);
+                await document.fonts.load(`16px "${fontName}"`);
+                if (restoreId !== (window.__fontSelectionGeneration || 0)) return;
+                document.documentElement.style.fontFamily = `"${fontName}", sans-serif`;
+                document.body.style.fontFamily = `"${fontName}", sans-serif`;
+            } catch (err) {
+                console.warn('恢复设置页字体失败', err);
+            }
+        }
+
         window.addEventListener('DOMContentLoaded', () => {
+            const bgPanel = document.getElementById('bgPanel');
+            const previewFrame = document.getElementById('bgPreviewFrame');
+            const uploadHeader = bgPanel?.firstElementChild;
+            const previewSection = previewFrame?.parentElement;
+            if (bgPanel && previewSection && uploadHeader) {
+                bgPanel.insertBefore(previewSection, uploadHeader);
+            }
             restoreUserInfo();
             NotificationManager.loadSettings();
             updateNotificationSettingsUI();
             syncBackgroundPreviewUI();
             restoreSavedBackground();
+            restoreSavedFont();
             // 加载用户和公共的背景/字体资源
             loadAssets();
             // 恢复上次打开的面板
@@ -690,6 +786,34 @@
             }
         }
 
+        function handleCropWheel(event) {
+            const state = window.__bgCropState;
+            const viewport = document.getElementById('bgCropViewport');
+            if (!state || !viewport) return;
+            event.preventDefault();
+
+            const rect = viewport.getBoundingClientRect();
+            const pointerX = clamp(event.clientX - rect.left, 0, state.previewW);
+            const pointerY = clamp(event.clientY - rect.top, 0, state.previewH);
+            const oldWidth = state.width;
+            const oldHeight = state.height;
+            const zoomFactor = event.deltaY < 0 ? 0.9 : 1.1;
+            let nextWidth = clamp(oldWidth * zoomFactor, 160, state.previewW);
+            let nextHeight = nextWidth / (1920 / 1080);
+            if (nextHeight > state.previewH) {
+                nextHeight = state.previewH;
+                nextWidth = nextHeight * (1920 / 1080);
+            }
+
+            const focusX = clamp((pointerX - state.x) / oldWidth, 0, 1);
+            const focusY = clamp((pointerY - state.y) / oldHeight, 0, 1);
+            state.width = nextWidth;
+            state.height = nextHeight;
+            state.x = clamp(pointerX - focusX * nextWidth, 0, state.previewW - nextWidth);
+            state.y = clamp(pointerY - focusY * nextHeight, 0, state.previewH - nextHeight);
+            drawCropSelection();
+        }
+
         async function confirmCropBackground() {
             const modal = document.getElementById('bgCropModal');
             const canvas = document.getElementById('bgCropCanvas');
@@ -706,18 +830,44 @@
             const outCtx = output.getContext('2d');
             outCtx.clearRect(0, 0, output.width, output.height);
             outCtx.drawImage(document.getElementById('bgCropImage'), cropX, cropY, cropW, cropH, 0, 0, output.width, output.height);
-            const dataUrl = output.toDataURL('image/png');
-            applyBackgroundValue(dataUrl);
             const token = getAuthToken();
+            const username = localStorage.getItem(authUserKey) || 'anonymous';
+            const visibility = document.querySelector('input[name="bgVisibility"]:checked')?.value || 'private';
+            const croppedBlob = await new Promise(resolve => output.toBlob(resolve, 'image/png'));
+            if (!croppedBlob) {
+                showToast('裁剪图片生成失败', true);
+                return;
+            }
+
+            const form = new FormData();
+            form.append('file', croppedBlob, 'background.png');
+            form.append('visibility', visibility);
+            form.append('username', username);
+            form.append('file_type', 'background');
+            const uploadRes = await fetch('/api/upload', { method: 'POST', body: form });
+            if (!uploadRes.ok) {
+                showToast('背景上传失败', true);
+                return;
+            }
+            const uploaded = await uploadRes.json();
+            if (!uploaded.url) {
+                showToast('背景地址获取失败', true);
+                return;
+            }
+
+            const usableUrl = await getUsableUrlForAsset(uploaded.url, false);
+            window.__currentBackgroundSourceUrl = uploaded.url;
+            applyBackgroundValue(usableUrl || uploaded.url);
             await fetch('/api/user/background', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: dataUrl })
+                body: JSON.stringify({ url: uploaded.url })
             });
             showToast('背景已裁剪并保存');
             modal.classList.add('hidden');
             window.__bgCropState = null;
             document.getElementById('personalBgInput').value = '';
+            await loadAssets();
         }
 
         async function uploadAsset(inputId, fileType) {
@@ -731,6 +881,12 @@
                 return;
             }
 
+            const fontName = fileType === 'font' ? await requestFontName(file.name) : null;
+            if (fileType === 'font' && !fontName) {
+                input.value = '';
+                return;
+            }
+
             const visibilityName = fileType === 'font' ? 'fontVisibility' : 'bgVisibility';
             const visibility = document.querySelector(`input[name="${visibilityName}"]:checked`).value || 'private';
 
@@ -739,6 +895,7 @@
             form.append('visibility', visibility);
             form.append('username', localStorage.getItem(authUserKey) || 'anonymous');
             form.append('file_type', fileType);
+            if (fontName) form.append('custom_name', fontName);
 
             try {
                 const res = await fetch('/api/upload', { method: 'POST', body: form });
@@ -780,13 +937,47 @@
             '#E879F9', '#8B5CF6', '#6366F1', '#0EA5E9', '#14B8A6', '#22C55E'
         ];
 
+        function getCustomSolidColors() {
+            try {
+                const saved = JSON.parse(localStorage.getItem('settings_custom_bg_colors') || '[]');
+                return Array.isArray(saved) ? saved.filter(color => /^#[0-9A-F]{6}$/i.test(color)) : [];
+            } catch (err) {
+                return [];
+            }
+        }
+
+        function saveCustomSolidColors(colors) {
+            localStorage.setItem('settings_custom_bg_colors', JSON.stringify(colors));
+        }
+
+        function saveCustomRgbColor() {
+            const values = ['customColorR', 'customColorG', 'customColorB'].map(id => Number(document.getElementById(id)?.value));
+            if (values.some(value => !Number.isInteger(value) || value < 0 || value > 255)) {
+                showToast('请输入 0 到 255 的 RGB 数值', true);
+                return;
+            }
+            const color = `#${values.map(value => value.toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+            const colors = getCustomSolidColors().filter(item => item !== color);
+            colors.push(color);
+            saveCustomSolidColors(colors);
+            renderSolidColorPalette('publicColorPalette');
+            showToast(`已保存颜色 ${color}`);
+        }
+
+        async function deleteCustomSolidColor(color) {
+            if (!await showConfirmDialog('删除后无法恢复。', '确认删除颜色？', 'delete')) return;
+            saveCustomSolidColors(getCustomSolidColors().filter(item => item !== color));
+            renderSolidColorPalette('publicColorPalette');
+            showToast('颜色已删除');
+        }
+
         function renderSolidColorPalette(containerId) {
             const c = document.getElementById(containerId);
             if (!c) return;
             c.innerHTML = '';
 
-            const wrap = document.createElement('div');
-            wrap.className = 'flex flex-wrap gap-2 mt-2';
+            const normalWrap = document.createElement('div');
+            normalWrap.className = 'solid-bg-palette flex flex-wrap gap-2 mt-2';
 
             const noneBtn = document.createElement('button');
             noneBtn.type = 'button';
@@ -806,8 +997,9 @@
                     showToast('已清除背景');
                 }
             };
-            wrap.appendChild(noneBtn);
+            normalWrap.appendChild(noneBtn);
 
+            const customColors = getCustomSolidColors();
             solidBgPalette.forEach(color => {
                 const btn = document.createElement('button');
                 btn.type = 'button';
@@ -816,6 +1008,10 @@
                 btn.style.backgroundColor = color;
                 btn.style.boxShadow = 'inset 0 0 0 1px rgba(15,23,42,0.08)';
                 btn.onclick = async () => {
+                    if (btn.dataset.longPressed === 'true') {
+                        btn.dataset.longPressed = 'false';
+                        return;
+                    }
                     const solidValue = `solid:${color}`;
                     applyBackgroundValue(solidValue);
                     try {
@@ -830,14 +1026,76 @@
                         showToast('纯色背景已应用');
                     }
                 };
-                wrap.appendChild(btn);
+                normalWrap.appendChild(btn);
             });
 
-            c.appendChild(wrap);
+            c.appendChild(normalWrap);
+
+            const customTitle = document.createElement('div');
+            customTitle.className = 'mt-4 text-sm font-semibold text-slate-700';
+            customTitle.innerText = '我的背景颜色';
+            c.appendChild(customTitle);
+
+            const customWrap = document.createElement('div');
+            customWrap.className = 'solid-bg-custom-palette mt-2 flex flex-wrap gap-2';
+            if (customColors.length === 0) {
+                customWrap.className = 'solid-bg-custom-palette mt-2 text-xs text-slate-400';
+                customWrap.innerText = '暂无自创颜色';
+            }
+            customColors.forEach(color => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'h-8 w-8 rounded-md border border-slate-300 shadow-sm transition hover:scale-105';
+                btn.title = color;
+                btn.style.backgroundColor = color;
+                btn.style.boxShadow = 'inset 0 0 0 1px rgba(15,23,42,0.08)';
+                btn.onclick = async () => {
+                    if (btn.dataset.longPressed === 'true') {
+                        btn.dataset.longPressed = 'false';
+                        return;
+                    }
+                    const solidValue = `solid:${color}`;
+                    applyBackgroundValue(solidValue);
+                    await fetch('/api/user/background', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${getAuthToken()}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: solidValue })
+                    });
+                    showToast('纯色背景已应用');
+                };
+                let pressTimer = null;
+                btn.addEventListener('pointerdown', () => {
+                    btn.dataset.longPressed = 'false';
+                    clearTimeout(pressTimer);
+                    pressTimer = setTimeout(() => {
+                        btn.dataset.longPressed = 'true';
+                        deleteCustomSolidColor(color);
+                    }, 650);
+                });
+                ['pointerup', 'pointercancel', 'pointerleave'].forEach(eventName => {
+                    btn.addEventListener(eventName, () => clearTimeout(pressTimer));
+                });
+                btn.addEventListener('contextmenu', event => event.preventDefault());
+                customWrap.appendChild(btn);
+            });
+            c.appendChild(customWrap);
+
+            const customEditor = document.createElement('div');
+            customEditor.className = 'mt-3 flex flex-wrap items-center gap-2';
+            customEditor.innerHTML = `
+                <span class="text-xs font-semibold text-slate-500">自定义 RGB</span>
+                <input id="customColorR" type="number" min="0" max="255" placeholder="R" class="h-8 w-16 rounded-md border border-slate-300 px-2 text-xs">
+                <input id="customColorG" type="number" min="0" max="255" placeholder="G" class="h-8 w-16 rounded-md border border-slate-300 px-2 text-xs">
+                <input id="customColorB" type="number" min="0" max="255" placeholder="B" class="h-8 w-16 rounded-md border border-slate-300 px-2 text-xs">
+                <button type="button" class="h-8 rounded-md bg-slate-800 px-3 text-xs text-white" onclick="saveCustomRgbColor()">保存颜色</button>
+            `;
+            c.appendChild(customEditor);
         }
 
         async function loadAssets() {
             const username = localStorage.getItem(authUserKey) || '';
+            const loadId = (window.__assetLoadGeneration || 0) + 1;
+            window.__assetLoadGeneration = loadId;
             try {
                 const [pubBgRes, userBgRes, pubFontRes, userFontRes] = await Promise.all([
                     fetch('/api/assets?scope=public&type=background'),
@@ -849,6 +1107,7 @@
                 const userBg = await userBgRes.json().catch(() => ({assets:[]}));
                 const pubFont = await pubFontRes.json().catch(() => ({assets:[]}));
                 const userFont = await userFontRes.json().catch(() => ({assets:[]}));
+                if (loadId !== window.__assetLoadGeneration) return;
 
                 // 保存到全局以便画廊打开时使用
                 window.publicBgAssets = pubBg.assets || [];
@@ -856,9 +1115,9 @@
                 window.publicFontAssets = pubFont.assets || [];
                 window.userFontAssets = userFont.assets || [];
 
-                renderBgList('publicBgList', window.publicBgAssets);
-                renderSolidColorPalette('publicBgList');
-                renderBgList('userBgList', window.userBgAssets);
+                await renderBgList('publicBgList', window.publicBgAssets, loadId);
+                renderSolidColorPalette('publicColorPalette');
+                await renderBgList('userBgList', window.userBgAssets, loadId);
                 renderFontList('publicFontList', window.publicFontAssets);
                 renderFontList('userFontList', window.userFontAssets);
             } catch (err) {
@@ -866,23 +1125,72 @@
             }
         }
 
-        function renderBgList(containerId, assets) {
+        async function renderBgList(containerId, assets, loadId = window.__assetLoadGeneration) {
             const c = document.getElementById(containerId);
             if (!c) return;
+            if (loadId !== window.__assetLoadGeneration) return;
             c.innerHTML = '';
-            assets.forEach(url => {
+            if (!assets || assets.length === 0) {
+                if (containerId === 'userBgList') {
+                    c.innerHTML = '<div class="py-2 text-sm text-slate-400">没有上传背景</div>';
+                }
+                return;
+            }
+            for (const url of assets) {
+                const usableUrl = await getUsableUrlForAsset(url, false);
+                if (loadId !== window.__assetLoadGeneration) return;
                 const el = document.createElement('div');
                 el.className = 'w-24 h-16 bg-center bg-cover rounded-md border cursor-pointer';
-                el.style.backgroundImage = `url('${url}')`;
+                el.dataset.assetUrl = url;
+                el.style.backgroundImage = usableUrl ? `url('${usableUrl}')` : 'none';
+                let pressTimer = null;
+                let longPressed = false;
                 el.onclick = async () => {
+                    if (longPressed) {
+                        longPressed = false;
+                        return;
+                    }
                     await fetch('/api/user/background', {
                         method: 'POST',
                         headers: { 'Authorization': `Bearer ${getAuthToken()}`, 'Content-Type': 'application/json' },
                         body: JSON.stringify({ url })
                     });
-                    applyBackgroundValue(url);
+                    window.__currentBackgroundSourceUrl = url;
+                    applyBackgroundValue(usableUrl || url);
                     showToast('背景已应用');
                 };
+                el.addEventListener('pointerdown', () => {
+                    longPressed = false;
+                    clearTimeout(pressTimer);
+                    pressTimer = setTimeout(async () => {
+                        longPressed = true;
+                        if (!await showConfirmDialog('删除后无法恢复。', '确认删除背景？', 'delete')) return;
+                        const assetUrl = el.dataset.assetUrl;
+                        try {
+                            const response = await fetch(`/api/assets/delete?url=${encodeURIComponent(assetUrl)}`, {
+                                method: 'DELETE',
+                                headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+                            });
+                            if (!response.ok) {
+                                showToast('删除失败', true);
+                                return;
+                            }
+                            if (window.__currentBackgroundSourceUrl === assetUrl) {
+                                window.__currentBackgroundSourceUrl = 'none';
+                                applyBackgroundValue('none');
+                            }
+                            showToast('背景已删除');
+                            await loadAssets();
+                        } catch (err) {
+                            console.error(err);
+                            showToast('删除失败', true);
+                        }
+                    }, 650);
+                });
+                ['pointerup', 'pointercancel', 'pointerleave'].forEach(eventName => {
+                    el.addEventListener(eventName, () => clearTimeout(pressTimer));
+                });
+                el.addEventListener('contextmenu', event => event.preventDefault());
                 // 右键打开原图预览
                 el.addEventListener('contextmenu', (e) => {
                     e.preventDefault();
@@ -890,7 +1198,7 @@
                     if (!win) showToast('弹窗被阻止，请允许弹窗以查看预览', true);
                 });
                 c.appendChild(el);
-            });
+            }
         }
 
         function renderFontList(containerId, assets) {
@@ -899,44 +1207,55 @@
             // 回收此前生成的预览 blob URL，避免内存泄漏
             revokeAllPreviewUrls();
             c.innerHTML = '';
+            if (!assets || assets.length === 0) {
+                c.innerHTML = '<div class="rounded-xl border border-dashed border-slate-200 px-3 py-4 text-sm text-slate-400">暂无字体</div>';
+                return;
+            }
             assets.forEach(url => {
                 const card = document.createElement('div');
-                card.className = 'p-3 rounded border flex items-center justify-between';
+                card.className = 'flex min-w-0 flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm';
+                const topRow = document.createElement('div');
+                topRow.className = 'flex min-w-0 items-start gap-3';
                 const lbl = document.createElement('div');
-                lbl.innerText = url.split('/').pop();
-                lbl.style.fontSize = '16px';
-                lbl.style.flex = '1';
-                const sample = document.createElement('div');
-                sample.innerText = '示例文本';
-                sample.className = 'px-2 py-1 text-sm';
-                sample.style.marginRight = '8px';
+                lbl.innerText = decodeURIComponent(url.split('/').pop().split('?')[0]);
+                lbl.className = 'min-w-0 flex-1 break-words text-sm font-semibold leading-5 text-slate-700';
                 const btn = document.createElement('button');
-                btn.className = 'px-3 py-1 bg-slate-100 rounded text-sm';
+                btn.className = 'shrink-0 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700 transition hover:bg-blue-50 hover:text-blue-700';
                 btn.innerText = '使用';
                 btn.onclick = async () => {
+                    const selectionId = (window.__fontSelectionGeneration || 0) + 1;
+                    window.__fontSelectionGeneration = selectionId;
                     const fontName = 'userfont_' + Math.random().toString(36).slice(2,8);
                     const srcUrl = await getUsableUrlForAsset(url);
                     if (!srcUrl) { showToast('无法加载字体', true); return; }
                     const style = document.createElement('style');
-                    const ext = (srcUrl.split('.').pop() || '').split('?')[0].toLowerCase();
+                    const ext = (url.split('.').pop() || '').split('?')[0].toLowerCase();
                     let fmt = 'truetype';
                     if (ext === 'woff2') fmt = 'woff2';
                     else if (ext === 'woff') fmt = 'woff';
                     else if (ext === 'otf') fmt = 'opentype';
                     else if (ext === 'ttf') fmt = 'truetype';
-                    style.innerText = `@font-face { font-family: "${fontName}"; src: url("${srcUrl}") format("${fmt}"); font-display: swap; }`;
+                    style.innerText = `@font-face { font-family: "${fontName}"; src: url("${srcUrl}") format("${fmt}"); font-display: swap; } html, body, body * { font-family: "${fontName}", sans-serif !important; }`;
                     document.head.appendChild(style);
-                    await fetch('/api/user/font', {
+                    document.documentElement.style.fontFamily = `"${fontName}", sans-serif`;
+                    document.body.style.fontFamily = `"${fontName}", sans-serif`;
+                    const fontReady = document.fonts.load(`16px "${fontName}"`).catch(() => []);
+                    const saveResponse = await fetch('/api/user/font', {
                         method: 'POST',
                         headers: { 'Authorization': `Bearer ${getAuthToken()}`, 'Content-Type': 'application/json' },
                         body: JSON.stringify({ url })
                     });
+                    if (!saveResponse.ok) {
+                        showToast('字体保存失败', true);
+                        return;
+                    }
+                    await fontReady;
+                    localStorage.setItem('lanchat_font_url', url);
                     showToast('字体已应用');
-                    document.body.style.fontFamily = `"${fontName}", sans-serif`;
                 };
-                card.appendChild(lbl);
-                card.appendChild(sample);
-                card.appendChild(btn);
+                topRow.appendChild(lbl);
+                topRow.appendChild(btn);
+                card.appendChild(topRow);
                 c.appendChild(card);
 
                 (async () => {
@@ -953,7 +1272,6 @@
                     s.innerText = `@font-face { font-family: "${previewName}"; src: url("${srcUrl}") format("${fmt2}"); font-display: swap; }`;
                     document.head.appendChild(s);
                     const family = `"${previewName}", sans-serif`;
-                    sample.style.fontFamily = family;
                     lbl.style.fontFamily = family;
                     try {
                         await document.fonts.load(`16px "${previewName}"`);
@@ -964,7 +1282,7 @@
             });
         }
 
-        async function getUsableUrlForAsset(url) {
+        async function getUsableUrlForAsset(url, trackAsPreview = true) {
             if (url.startsWith('/photos/uploads/') && !url.startsWith('/photos/uploads/userpublic/')) {
                 try {
                     const token = getAuthToken();
@@ -972,8 +1290,9 @@
                     if (!res.ok) return null;
                     const blob = await res.blob();
                     const obj = URL.createObjectURL(blob);
-                    window._createdPreviewUrls = window._createdPreviewUrls || [];
-                    window._createdPreviewUrls.push(obj);
+                    const targetList = trackAsPreview ? '_createdPreviewUrls' : '_createdBackgroundUrls';
+                    window[targetList] = window[targetList] || [];
+                    window[targetList].push(obj);
                     return obj;
                 } catch (err) { return null; }
             }
@@ -1027,7 +1346,7 @@
                 <button onclick="document.getElementById('bgCropModal').classList.add('hidden')" class="text-slate-500 hover:text-slate-700">✕</button>
             </div>
             <div class="mb-3 text-xs text-slate-500">拖动和缩放选区，保留需要的部分，最终将按 1920 × 1080 裁出并平铺显示。</div>
-            <div class="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-100" style="width: 760px; max-width: 100%; height: 430px;">
+            <div id="bgCropViewport" class="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-100" style="width: 760px; max-width: 100%; height: 430px;" onwheel="handleCropWheel(event)">
                 <img id="bgCropImage" class="absolute inset-0 h-full w-full object-cover" draggable="false" />
                 <div id="bgCropSelection" class="absolute border-2 border-blue-500 bg-blue-500/10" style="cursor: move; box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.38);" onmousedown="startCropDrag(event)" onmousemove="handleCropMove(event)" onmouseup="endCropDrag()" onmouseleave="endCropDrag()"></div>
             </div>
@@ -1038,17 +1357,141 @@
         </div>
     </div>
 
+    <div id="bgVisibilityModal" class="bg-visibility-modal hidden fixed inset-0 z-[65] items-center justify-center bg-black/50 p-4">
+        <div class="bg-visibility-panel w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+            <div id="uploadVisibilityTitle" class="mb-4 text-center text-lg font-semibold text-slate-800">选择上传可见性</div>
+            <div class="grid grid-cols-2 gap-3">
+                <button id="privateUploadChoice" type="button" onclick="chooseUploadVisibility('private')" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700 hover:bg-slate-100">私密</button>
+                <button id="publicUploadChoice" type="button" onclick="chooseUploadVisibility('public')" class="rounded-xl bg-blue-600 px-4 py-4 text-sm text-white hover:bg-blue-700">公开</button>
+            </div>
+            <button type="button" onclick="closeUploadVisibilityChoice()" class="mt-3 w-full rounded-xl px-4 py-2 text-sm text-slate-500 hover:bg-slate-50">取消</button>
+        </div>
+    </div>
+
+    <div id="fontNameModal" class="bg-visibility-modal hidden fixed inset-0 z-[66] items-center justify-center bg-black/50 p-4">
+        <div class="bg-visibility-panel w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+            <div class="mb-4 text-center text-lg font-semibold text-slate-800">设置字体名称</div>
+            <input id="fontNameInput" type="text" maxlength="15" placeholder="请输入字体名称（最多15个字符）" class="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none focus:border-blue-400">
+            <div class="mt-4 grid grid-cols-2 gap-3">
+                <button type="button" onclick="closeFontNameChoice()" class="rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-600">取消</button>
+                <button type="button" onclick="confirmFontNameChoice()" class="rounded-xl bg-blue-600 px-4 py-3 text-sm text-white">确定</button>
+            </div>
+        </div>
+    </div>
+
     <canvas id="bgCropCanvas" class="hidden"></canvas>
 
     <script>
+        function openUploadVisibilityChoice(fileType = 'background') {
+            const modal = document.getElementById('bgVisibilityModal');
+            if (!modal) return;
+            modal.dataset.fileType = fileType;
+            document.getElementById('uploadVisibilityTitle').innerText = fileType === 'font' ? '选择字体可见性' : '选择背景可见性';
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            requestAnimationFrame(() => modal.classList.add('visible'));
+        }
+
+        function closeUploadVisibilityChoice(afterClose) {
+            const modal = document.getElementById('bgVisibilityModal');
+            if (!modal) return;
+            modal.classList.remove('visible');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                if (afterClose) afterClose();
+            }, 180);
+        }
+
+        function chooseUploadVisibility(visibility) {
+            const fileType = document.getElementById('bgVisibilityModal')?.dataset.fileType || 'background';
+            const inputId = fileType === 'font' ? 'personalFontInput' : 'personalBgInput';
+            const radioName = fileType === 'font' ? 'fontVisibility' : 'bgVisibility';
+            const radio = document.querySelector(`input[name="${radioName}"][value="${visibility}"]`);
+            if (radio) radio.checked = true;
+            closeUploadVisibilityChoice(() => document.getElementById(inputId)?.click());
+        }
+
+        function requestFontName(fileName = '') {
+            const modal = document.getElementById('fontNameModal');
+            const input = document.getElementById('fontNameInput');
+            if (!modal || !input) return Promise.resolve(null);
+            const originalName = fileName.replace(/\.[^.]+$/, '');
+            input.value = [...originalName].slice(0, 15).join('');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex', 'visible');
+            input.focus();
+            return new Promise(resolve => { window.__fontNameResolver = resolve; });
+        }
+
+        function finishFontNameChoice(name) {
+            const modal = document.getElementById('fontNameModal');
+            modal?.classList.remove('visible');
+            setTimeout(() => {
+                modal?.classList.add('hidden');
+                modal?.classList.remove('flex');
+            }, 180);
+            const resolve = window.__fontNameResolver;
+            window.__fontNameResolver = null;
+            if (resolve) resolve(name);
+        }
+
+        function closeFontNameChoice() {
+            finishFontNameChoice(null);
+        }
+
+        function confirmFontNameChoice() {
+            const name = document.getElementById('fontNameInput')?.value.trim() || '';
+            if (!name) {
+                showToast('请输入字体名称', true);
+                return;
+            }
+            if ([...name].length > 15) {
+                showToast('字体名称不能超过15个字符', true);
+                return;
+            }
+            finishFontNameChoice(name);
+        }
+
         function toggleCollapse(id) {
             const el = document.getElementById(id);
             if (!el) return;
-            if (el.style.display === 'none' || getComputedStyle(el).display === 'none') {
-                el.style.display = '';
-            } else {
-                el.style.display = 'none';
+            const toggleButton = document.getElementById(`${id}ToggleBtn`);
+            const isCollapsed = el.dataset.collapsed === 'true' || getComputedStyle(el).display === 'none';
+            clearTimeout(Number(el.dataset.collapseTimer || 0));
+            el.style.overflow = 'hidden';
+            el.style.transformOrigin = 'bottom';
+            el.style.transition = 'max-height 280ms ease, opacity 220ms ease, transform 280ms ease';
+
+            if (isCollapsed) {
+                el.style.display = 'block';
+                el.style.maxHeight = '0px';
+                el.style.opacity = '0';
+                el.style.transform = 'scaleY(0)';
+                requestAnimationFrame(() => {
+                    el.style.maxHeight = `${el.scrollHeight}px`;
+                    el.style.opacity = '1';
+                    el.style.transform = 'scaleY(1)';
+                });
+                el.dataset.collapsed = 'false';
+                if (toggleButton) toggleButton.innerText = '折叠';
+                return;
             }
+
+            el.style.maxHeight = `${el.scrollHeight}px`;
+            el.style.opacity = '1';
+            el.style.transform = 'scaleY(1)';
+            requestAnimationFrame(() => {
+                el.style.maxHeight = '0px';
+                el.style.opacity = '0';
+                el.style.transform = 'scaleY(0)';
+            });
+            el.dataset.collapsed = 'true';
+            if (toggleButton) toggleButton.innerText = '展开';
+            el.dataset.collapseTimer = String(setTimeout(() => {
+                el.style.display = 'none';
+                el.removeAttribute('data-collapse-timer');
+            }, 300));
         }
 
         async function openGallery(urls, title) {
