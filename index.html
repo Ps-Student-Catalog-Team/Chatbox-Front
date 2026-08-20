@@ -573,15 +573,12 @@
                         </button>
                         <!-- 三点菜单 -->
                         <div id="chatMenu" class="hidden absolute right-0 top-10 bg-white border border-slate-200 rounded-lg shadow-lg z-50 w-48 text-sm">
-                            <div id="commonMenuItems">
+                            <div id="commonMenuItems" class="hidden">
                                 <button onclick="showChatMembers()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
                                     <span>👥</span> 成员
                                 </button>
                                 <button onclick="showBlockedUsers(event)" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
                                     <span>🚫</span> 已屏蔽用户
-                                </button>
-                                <button onclick="toggleNotificationSettingsModal(true); toggleChatMenu()" class="w-full text-left px-4 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition">
-                                    <span>🔔</span> 消息提醒
                                 </button>
                                 <hr class="my-1">
                             </div>
@@ -676,11 +673,16 @@
             <div class="flex items-center justify-between mb-4">
                 <div>
                     <h3 id="groupMembersModalTitle" class="text-sm font-bold text-slate-800"></h3>
-                    <p class="text-xs text-slate-500">群成员列表</p>
+                    <p id="groupMembersModalSubtitle" class="text-xs text-slate-500">群成员列表</p>
                 </div>
                 <button onclick="toggleGroupMembersModal(false)" class="text-xl text-slate-400 hover:text-slate-600 cursor-pointer">✕</button>
             </div>
             <div id="groupMembersModalList" class="space-y-2"></div>
+            <div id="groupMembersPagination" class="hidden items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                <button id="groupMembersPrevPage" type="button" onclick="changePublicMembersPage(-1)" class="rounded-lg bg-slate-100 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40">上一页</button>
+                <span id="groupMembersPageInfo" class="text-xs text-slate-500"></span>
+                <button id="groupMembersNextPage" type="button" onclick="changePublicMembersPage(1)" class="rounded-lg bg-slate-100 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40">下一页</button>
+            </div>
             <div class="flex justify-end pt-2 border-t border-slate-100">
                 <button onclick="toggleGroupMembersModal(false)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs cursor-pointer font-medium">关闭</button>
             </div>
@@ -1623,12 +1625,8 @@
             document.getElementById('activeChatMeta').innerText = metaText;
             const chatMenuBtn = document.getElementById('chatMenuBtn');
             const chatMenu = document.getElementById('chatMenu');
-            if (type === 'public' && id === 'global') {
-                if (chatMenuBtn) chatMenuBtn.classList.add('hidden');
-                if (chatMenu) chatMenu.classList.add('hidden');
-            } else {
-                if (chatMenuBtn) chatMenuBtn.classList.remove('hidden');
-            }
+            if (chatMenuBtn) chatMenuBtn.classList.remove('hidden');
+            if (chatMenu) chatMenu.classList.add('hidden');
             const sessionKey = `${type}:${id}`;
             if (!cacheMessages[sessionKey]) cacheMessages[sessionKey] = [];
             
@@ -3079,12 +3077,14 @@
                     document.getElementById('groupMenuItems').classList.add('hidden');
                     document.getElementById('privateMenuItems').classList.add('hidden');
                     document.getElementById('publicMenuItems').classList.add('hidden');
+                    document.getElementById('commonMenuItems').classList.add('hidden');
                     
                     if (activeTarget.type === 'group') {
                         document.getElementById('groupMenuItems').classList.remove('hidden');
                     } else if (activeTarget.type === 'private') {
                         document.getElementById('privateMenuItems').classList.remove('hidden');
                     } else if (activeTarget.type === 'public') {
+                        document.getElementById('commonMenuItems').classList.remove('hidden');
                         document.getElementById('publicMenuItems').classList.remove('hidden');
                     }
                 }
@@ -3261,11 +3261,87 @@
             }
         }
 
+        let publicChatMembers = [];
+        let publicMembersPage = 1;
+        const publicMembersPageSize = 15;
+
+        function renderPublicMembersPage() {
+            const listEl = document.getElementById('groupMembersModalList');
+            const paginationEl = document.getElementById('groupMembersPagination');
+            const pageInfoEl = document.getElementById('groupMembersPageInfo');
+            const prevButton = document.getElementById('groupMembersPrevPage');
+            const nextButton = document.getElementById('groupMembersNextPage');
+            if (!listEl) return;
+            const totalPages = Math.max(1, Math.ceil(publicChatMembers.length / publicMembersPageSize));
+            publicMembersPage = Math.min(publicMembersPage, totalPages);
+            const start = (publicMembersPage - 1) * publicMembersPageSize;
+            const members = publicChatMembers.slice(start, start + publicMembersPageSize);
+
+            listEl.innerHTML = members.length > 0
+                ? members.map((name, index) => `
+                    <div class="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50 text-sm">
+                        <span class="font-medium text-slate-800">${start + index + 1}. ${escapeHtml(name)}</span>
+                        <span class="text-[11px] text-slate-500">参与者</span>
+                    </div>
+                `).join('')
+                : '<div class="py-6 text-center text-sm text-slate-400">暂无发言用户</div>';
+
+            if (paginationEl && pageInfoEl && prevButton && nextButton) {
+                paginationEl.classList.remove('hidden');
+                paginationEl.classList.add('flex');
+                pageInfoEl.innerText = `${publicMembersPage} / ${totalPages}`;
+                prevButton.disabled = publicMembersPage === 1;
+                nextButton.disabled = publicMembersPage === totalPages;
+            }
+        }
+
+        function changePublicMembersPage(offset) {
+            const totalPages = Math.max(1, Math.ceil(publicChatMembers.length / publicMembersPageSize));
+            publicMembersPage = Math.max(1, Math.min(totalPages, publicMembersPage + offset));
+            renderPublicMembersPage();
+        }
+
+        async function showPublicChatMembers() {
+            const titleEl = document.getElementById('groupMembersModalTitle');
+            const subtitleEl = document.getElementById('groupMembersModalSubtitle');
+            const listEl = document.getElementById('groupMembersModalList');
+            const paginationEl = document.getElementById('groupMembersPagination');
+            if (!titleEl || !listEl) return;
+            titleEl.innerText = '公共聊天室成员';
+            if (subtitleEl) subtitleEl.innerText = '所有发言用户（不含系统公告）';
+            if (paginationEl) {
+                paginationEl.classList.add('hidden');
+                paginationEl.classList.remove('flex');
+            }
+            listEl.innerHTML = '<div class="py-6 text-center text-sm text-slate-400">正在加载成员...</div>';
+            toggleGroupMembersModal(true);
+
+            try {
+                const response = await fetch(`${httpUri}/api/public/members`, {
+                    method: 'GET',
+                    headers: authHeaders(),
+                    credentials: 'same-origin'
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                publicChatMembers = await response.json();
+                if (!Array.isArray(publicChatMembers)) throw new Error('成员数据格式错误');
+                publicMembersPage = 1;
+                renderPublicMembersPage();
+            } catch (err) {
+                console.warn('获取公共聊天室成员失败', err);
+                listEl.innerHTML = '<div class="py-6 text-center text-sm text-red-400">获取成员失败，请稍后重试</div>';
+            }
+        }
+
         function showChatMembers() {
             toggleChatMenu();
             if (!activeTarget) return;
             if (activeTarget.type === 'group') {
                 showGroupMembers();
+                return;
+            }
+            if (activeTarget.type === 'public') {
+                showPublicChatMembers();
                 return;
             }
 

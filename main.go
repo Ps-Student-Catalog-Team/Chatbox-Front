@@ -107,6 +107,7 @@ func main() {
 	http.HandleFunc("/api/reset-password", handleResetPassword)
 
 	http.HandleFunc("/api/messages", handleGetMessages)
+	http.HandleFunc("/api/public/members", handlePublicChatMembers)
 	http.HandleFunc("/api/group/", handleGroupMembers)
 	http.HandleFunc("/api/online-users", handleGetOnlineUsers)
 
@@ -2365,6 +2366,29 @@ func handleGetMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(msgs)
+}
+
+func handlePublicChatMembers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		return
+	}
+
+	rows, err := db.Query(`SELECT DISTINCT sender FROM messages
+		WHERE target_type = 'public' AND target_id = 'global' AND sender <> ?
+		ORDER BY sender COLLATE NOCASE`, "📢 系统公告")
+	members := make([]string, 0)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var sender string
+			if rows.Scan(&sender) == nil && sender != "" {
+				members = append(members, sender)
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(members)
 }
 
 func handleGroupMembers(w http.ResponseWriter, r *http.Request) {
