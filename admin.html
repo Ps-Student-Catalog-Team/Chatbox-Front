@@ -85,6 +85,7 @@
                             <div id="tabIndicator" class="tab-indicator"></div>
                             <button onclick="switchTab('users')" id="tabBtn-users" class="tab-btn rounded-xl px-3 py-2 transition">👥 用户</button>
                             <button onclick="switchTab('messages')" id="tabBtn-messages" class="tab-btn rounded-xl px-3 py-2 transition">💬 消息审核</button>
+                            <button onclick="switchTab('reports')" id="tabBtn-reports" class="tab-btn rounded-xl px-3 py-2 transition">⚑ 举报审核</button>
                             <button onclick="switchTab('system')" id="tabBtn-system" class="tab-btn rounded-xl px-3 py-2 transition">📢 公告</button>
                             <button onclick="switchTab('extensions')" id="tabBtn-extensions" class="tab-btn rounded-xl px-3 py-2 transition">🧩 扩展</button>
                         </div>
@@ -161,6 +162,17 @@
                         <button onclick="refreshMessages()" class="text-sm font-semibold text-sky-600 transition hover:text-sky-500">刷新</button>
                     </div>
                     <div id="messageStreamBody" class="max-h-[560px] divide-y divide-slate-100 overflow-y-auto"></div>
+                </section>
+
+                <section id="panel-reports" class="panel-card glass-card hidden overflow-hidden rounded-[28px] border border-slate-200/70 shadow-[0_10px_40px_rgba(15,23,42,0.06)]">
+                    <div class="flex items-center justify-between border-b border-slate-200/70 bg-slate-50/70 px-4 py-4 sm:px-6">
+                        <div>
+                            <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">举报审核</p>
+                            <p class="mt-1 text-xs text-slate-400">查看用户提交的举报并决定处理与驳回</p>
+                        </div>
+                        <button onclick="refreshReports()" class="text-sm font-semibold text-sky-600 transition hover:text-sky-500">刷新</button>
+                    </div>
+                    <div id="reportListBody" class="max-h-[640px] divide-y divide-slate-100 overflow-y-auto"></div>
                 </section>
 
                 <section id="panel-system" class="hidden space-y-4">
@@ -376,10 +388,11 @@
             const activeButton = document.getElementById(`tabBtn-${tabName}`);
             if (activeButton) activeButton.classList.add('active');
             requestAnimationFrame(() => moveTabIndicator(tabName));
-            ['users', 'messages', 'system', 'extensions'].forEach((panel) => document.getElementById(`panel-${panel}`).classList.add('hidden'));
+            ['users', 'messages', 'reports', 'system', 'extensions'].forEach((panel) => document.getElementById(`panel-${panel}`).classList.add('hidden'));
             document.getElementById(`panel-${tabName}`).classList.remove('hidden');
             if (tabName === 'users') refreshUsers();
             if (tabName === 'messages') refreshMessages();
+            if (tabName === 'reports') refreshReports();
         }
 
         function escapeHtml(value) {
@@ -529,6 +542,58 @@
                     </div>
                 `).join('');
             } catch (e) { showToast('拉取消息流失败', true); }
+        }
+
+        async function refreshReports() {
+            if (!currentAdminToken) return;
+            try {
+                const response = await fetch(`/api/admin/reports`, { headers: { 'Authorization': 'Bearer ' + currentAdminToken } });
+                const data = await response.json();
+                const container = document.getElementById('reportListBody');
+                if (!Array.isArray(data) || data.length === 0) {
+                    container.innerHTML = '<div class="p-8 text-center text-slate-400">当前暂无举报记录</div>';
+                    return;
+                }
+                container.innerHTML = data.map((report) => {
+                    const statusText = report.status === 'handled' ? '已处理' : report.status === 'rejected' ? '已驳回' : '待审核';
+                    const statusClass = report.status === 'handled' ? 'bg-emerald-50 text-emerald-700' : report.status === 'rejected' ? 'bg-slate-200 text-slate-700' : 'bg-amber-50 text-amber-700';
+                    const detail = report.detail ? escapeHtml(report.detail) : '未填写补充说明';
+                    const time = new Date((report.created_at || 0) * 1000).toLocaleString('zh-CN', { hour12: false });
+                    return `
+                        <div class="flex flex-col gap-3 px-4 py-4 sm:px-6 hover:bg-slate-50/70">
+                            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div class="min-w-0 flex-1">
+                                    <div class="mb-2 flex flex-wrap items-center gap-2">
+                                        <span class="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">${escapeHtml(report.reporter)}</span>
+                                        <span class="text-xs text-slate-500">举报</span>
+                                        <span class="inline-flex rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-rose-600">${escapeHtml(report.target_user)}</span>
+                                    </div>
+                                    <p class="mb-2 text-xs text-slate-500">理由：${escapeHtml(report.reason)} · ${time}</p>
+                                    <p class="break-all text-sm text-slate-700">${detail}</p>
+                                </div>
+                                <span class="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusClass}">${statusText}</span>
+                            </div>
+                            <div class="flex flex-wrap gap-2">
+                                <button onclick="reviewReport(${report.id}, 'handled')" class="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-400">标记已处理</button>
+                                <button onclick="reviewReport(${report.id}, 'rejected')" class="rounded-lg bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-300">驳回</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (e) { showToast('拉取举报列表失败', true); }
+        }
+
+        async function reviewReport(reportId, status) {
+            try {
+                const response = await fetch('/api/admin/review-report', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ admin_token: currentAdminToken, report_id: reportId, status })
+                });
+                if (!response.ok) throw new Error();
+                showToast(status === 'handled' ? '举报已标记为已处理' : '举报已驳回');
+                refreshReports();
+            } catch (e) { showToast('处理举报失败', true); }
         }
 
         async function deleteMsg(id) {

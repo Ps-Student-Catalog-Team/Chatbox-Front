@@ -54,6 +54,20 @@ type AdminMessage struct {
 	Content string `json:"content"`
 }
 
+type Report struct {
+	ID         int64  `json:"id"`
+	Reporter   string `json:"reporter"`
+	TargetUser string `json:"target_user"`
+	Reason     string `json:"reason"`
+	Detail     string `json:"detail"`
+	Status     string `json:"status"`
+	CreatedAt  int64  `json:"created_at"`
+	ReviewedAt int64  `json:"reviewed_at"`
+	ReviewedBy string `json:"reviewed_by"`
+}
+
+var reportReasonOptions = []string{"色情", "政治", "欺诈", "骚扰", "侮辱", "其他"}
+
 var (
 	db              *sql.DB
 	clients         = make(map[string]*websocket.Conn)
@@ -110,8 +124,11 @@ func main() {
 	http.HandleFunc("/api/public/members", handlePublicChatMembers)
 	http.HandleFunc("/api/group/", handleGroupMembers)
 	http.HandleFunc("/api/online-users", handleGetOnlineUsers)
+	http.HandleFunc("/api/report", handleCreateReport)
 
 	http.HandleFunc("/api/admin/users", handleAdminUsers)
+	http.HandleFunc("/api/admin/reports", handleAdminReports)
+	http.HandleFunc("/api/admin/review-report", handleAdminReviewReport)
 	http.HandleFunc("/api/admin/messages", handleAdminMessages)
 	http.HandleFunc("/api/admin/delete-user", handleAdminDeleteUser)
 	http.HandleFunc("/api/admin/delete-message", handleAdminDeleteMessage)
@@ -694,6 +711,21 @@ func initDB() {
 	);`)
 	if err != nil {
 		log.Fatalf("创建messages表失败: %v", err)
+	}
+
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS reports (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		reporter TEXT NOT NULL,
+		target_user TEXT NOT NULL,
+		reason TEXT NOT NULL,
+		detail TEXT DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'pending',
+		created_at INTEGER DEFAULT (strftime('%s','now')),
+		reviewed_at INTEGER DEFAULT 0,
+		reviewed_by TEXT DEFAULT ''
+	);`)
+	if err != nil {
+		log.Fatalf("创建reports表失败: %v", err)
 	}
 
 	_, _ = db.Exec("INSERT OR IGNORE INTO users (username, password) VALUES ('admin', '123')")
@@ -2702,6 +2734,156 @@ func handleResetPassword(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_ = json.NewEncoder(w).Encode(map[string]string{"message": "未找到对应的用户账号"})
 	}
+}
+
+func normalizeReportReasons(reasons []string) []string {
+	seen := make(map[string]struct{})
+	result := make([]string, 0, len(reasons))
+	for _, raw := range reasons {
+		reason := strings.TrimSpace(raw)
+		if reason == "" {
+			continue
+		}
+		if _, ok := seen[reason]; ok {
+			continue
+		}
+		seen[reason] = struct{}{}
+		result = append(result, reason)
+	}
+	return result
+}
+
+func handleCreateReport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		TargetUser string   `json:"target_user"`
+		Reasons    []string `json:"reasons"`
+		Detail     string   `json:"detail"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid payload", http.StatusBadRequest)
+		return
+	}
+
+	token := getTokenFromHeader(r)
+	if token == "" {
+		token = r.URL.Query().Get("token")
+	}
+	if token == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	user, err := getUsernameByToken(token)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	targetUser := strings.TrimSpace(req.TargetUser)
+	if targetUser == "" || targetUser == user {
+		http.Error(w, "Invalid target user", http.StatusBadRequest)
+		return
+	}
+
+	reasons := normalizeReportReasons(req.Reasons)
+	if len(reasons) == 0 {
+		reasons = []string{"其他"}
+	}
+	if req.Detail != "" {
+		reasons = append(reasons, "其他")
+		reasons = normalizeReportReasons(reasons)
+	}
+	finalReason := strings.Join(reasons, "、")
+	detail := strings.TrimSpace(req.Detail)
+	if len(finalReason) == 0 {
+		finalReason = "其他"
+	}
+
+	_, err = db.Exec("INSERT INTO reports (reporter, target_user, reason, detail, status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)", user, targetUser, finalReason, detail, time.Now().Unix())
+	if err != nil {
+		log.Printf("创建举报失败: user=%s target=%s err=%v", user, targetUser, err)
+		http.Error(w, "Failed to create report", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "message": "举报已提交，管理员将尽快审核"})
+}
+
+func handleAdminReports(w http.ResponseWriter, r *http.Request) {
+	if !checkAdminSecret(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	rows, err := db.Query("SELECT id, reporter, target_user, reason, detail, status, created_at, reviewed_at, reviewed_by FROM reports ORDER BY id DESC")
+	if err != nil {
+		log.Printf("查询举报列表失败: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]Report{})
+		return
+	}
+	defer rows.Close()
+
+	var list []Report
+	for rows.Next() {
+		var report Report
+		if err := rows.Scan(&report.ID, &report.Reporter, &report.TargetUser, &report.Reason, &report.Detail, &report.Status, &report.CreatedAt, &report.ReviewedAt, &report.ReviewedBy); err != nil {
+			continue
+		}
+		list = append(list, report)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(list)
+}
+
+func handleAdminReviewReport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !checkAdminSecret(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	var req struct {
+		ReportID int64  `json:"report_id"`
+		Status   string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid payload", http.StatusBadRequest)
+		return
+	}
+
+	if req.ReportID <= 0 {
+		http.Error(w, "report_id invalid", http.StatusBadRequest)
+		return
+	}
+	if req.Status != "handled" && req.Status != "rejected" {
+		http.Error(w, "status invalid", http.StatusBadRequest)
+		return
+	}
+
+	adminUser := "admin"
+	if user, err := getUsernameByToken(getTokenFromHeader(r)); err == nil && user != "" {
+		adminUser = user
+	}
+
+	_, err := db.Exec("UPDATE reports SET status = ?, reviewed_at = ?, reviewed_by = ? WHERE id = ?", req.Status, time.Now().Unix(), adminUser, req.ReportID)
+	if err != nil {
+		log.Printf("更新举报状态失败: report_id=%d err=%v", req.ReportID, err)
+		http.Error(w, "Failed to update report status", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "message": "举报已处理"})
 }
 
 func handleAdminUsers(w http.ResponseWriter, r *http.Request) {
