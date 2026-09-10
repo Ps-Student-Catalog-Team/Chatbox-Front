@@ -66,6 +66,16 @@ type Report struct {
 	ReviewedBy string `json:"reviewed_by"`
 }
 
+type PasswordResetRequest struct {
+	ID          int64  `json:"id"`
+	Username    string `json:"username"`
+	NewPassword string `json:"-"`
+	Status      string `json:"status"`
+	CreatedAt   int64  `json:"created_at"`
+	ReviewedAt  int64  `json:"reviewed_at"`
+	ReviewedBy  string `json:"reviewed_by"`
+}
+
 var reportReasonOptions = []string{"色情", "政治", "欺诈", "骚扰", "侮辱", "其他"}
 
 var (
@@ -73,7 +83,7 @@ var (
 	clients         = make(map[string]*websocket.Conn)
 	globalMute      = false
 	stateMutex      sync.RWMutex
-	adminSecret     = "admin666" // 默认管理员密码
+	adminSecret     = "" // 无内置默认密码，优先读 config.txt，其次读数据库 admin 账号
 	adminConfigPath = "config.txt"
 
 	upgrader = websocket.Upgrader{
@@ -119,6 +129,8 @@ func main() {
 	http.HandleFunc("/api/user/background", handleUserBackground)
 	http.HandleFunc("/api/user/font", handleUserFont)
 	http.HandleFunc("/api/reset-password", handleResetPassword)
+	http.HandleFunc("/api/admin/password-resets", handleAdminPasswordResets)
+	http.HandleFunc("/api/admin/review-password-reset", handleAdminReviewPasswordReset)
 
 	http.HandleFunc("/api/messages", handleGetMessages)
 	http.HandleFunc("/api/public/members", handlePublicChatMembers)
@@ -194,12 +206,12 @@ func readAdminPasswordFromConfig() (string, error) {
 	data, err := os.ReadFile(adminConfigPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			content := "# 管理员密码配置\nadminpassword=admin666\n"
+			content := "# 管理员密码配置\n# 请设置 adminpassword，留空则使用数据库中 admin 账号的密码\nadminpassword=\n"
 			if writeErr := os.WriteFile(adminConfigPath, []byte(content), 0644); writeErr != nil {
 				return "", writeErr
 			}
-			fmt.Printf("[INFO] 首次启动，已生成配置文件 %s，请修改 adminpassword 项\n", adminConfigPath)
-			return adminSecret, nil
+			fmt.Printf("[INFO] 首次启动，已生成配置文件 %s，请设置 adminpassword 或在管理页修改管理员密码\n", adminConfigPath)
+			return "", nil
 		}
 		return "", err
 	}
@@ -215,21 +227,17 @@ func readAdminPasswordFromConfig() (string, error) {
 			continue
 		}
 		if strings.HasPrefix(trimmed, "adminpassword=") {
-			value := strings.TrimSpace(strings.TrimPrefix(trimmed, "adminpassword="))
-			if value == "" {
-				return adminSecret, nil
-			}
-			return value, nil
+			return strings.TrimSpace(strings.TrimPrefix(trimmed, "adminpassword=")), nil
 		}
 	}
 
 	if !strings.Contains(text, "adminpassword=") {
-		updated := strings.TrimRight(text, "\n") + "\nadminpassword=" + adminSecret + "\n"
+		updated := strings.TrimRight(text, "\n") + "\nadminpassword=\n"
 		if writeErr := os.WriteFile(adminConfigPath, []byte(updated), 0644); writeErr != nil {
 			return "", writeErr
 		}
 	}
-	return adminSecret, nil
+	return "", nil
 }
 
 func decodeConfigText(data []byte) (string, error) {
@@ -320,12 +328,17 @@ func getAdminPassword() string {
 }
 
 func verifyAdminPassword(password string) bool {
-	if strings.EqualFold(password, getAdminPassword()) {
+	password = strings.TrimSpace(password)
+	if password == "" {
+		return false
+	}
+	cfgPwd := strings.TrimSpace(getAdminPassword())
+	if cfgPwd != "" && strings.EqualFold(password, cfgPwd) {
 		return true
 	}
 	var dbPwd string
 	if err := db.QueryRow("SELECT password FROM users WHERE username = ?", "admin").Scan(&dbPwd); err == nil {
-		return strings.EqualFold(dbPwd, password)
+		return dbPwd != "" && strings.EqualFold(dbPwd, password)
 	}
 	return false
 }
@@ -726,6 +739,19 @@ func initDB() {
 	);`)
 	if err != nil {
 		log.Fatalf("创建reports表失败: %v", err)
+	}
+
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS password_reset_requests (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		username TEXT NOT NULL,
+		new_password TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'pending',
+		created_at INTEGER DEFAULT (strftime('%s','now')),
+		reviewed_at INTEGER DEFAULT 0,
+		reviewed_by TEXT DEFAULT ''
+	);`)
+	if err != nil {
+		log.Fatalf("创建password_reset_requests表失败: %v", err)
 	}
 
 	_, _ = db.Exec("INSERT OR IGNORE INTO users (username, password) VALUES ('admin', '123')")
@@ -2715,25 +2741,152 @@ func handleDeleteAsset(w http.ResponseWriter, r *http.Request) {
 
 func handleResetPassword(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	var req map[string]string
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "请求格式不正确"})
+		return
+	}
 
-	username := req["username"]
-	newPassword := req["password"]
-
-	res, err := db.Exec("UPDATE users SET password = ? WHERE username = ?", newPassword, username)
-	affected, _ := res.RowsAffected()
-
+	username := strings.TrimSpace(req["username"])
+	newPassword := strings.TrimSpace(req["password"])
 	w.Header().Set("Content-Type", "application/json")
-	if err == nil && affected > 0 {
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-	} else {
+	if username == "" || newPassword == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "请完整填写用户名和新密码"})
+		return
+	}
+	if strings.EqualFold(username, "admin") {
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "管理员密码请在管理页修改"})
+		return
+	}
+
+	var exists int
+	err := db.QueryRow("SELECT COUNT(1) FROM users WHERE username = ?", username).Scan(&exists)
+	if err != nil || exists == 0 {
 		w.WriteHeader(http.StatusNotFound)
 		_ = json.NewEncoder(w).Encode(map[string]string{"message": "未找到对应的用户账号"})
+		return
 	}
+
+	_, _ = db.Exec("UPDATE password_reset_requests SET status = 'superseded', reviewed_at = ?, reviewed_by = 'system' WHERE username = ? AND status = 'pending'", time.Now().Unix(), username)
+	_, err = db.Exec("INSERT INTO password_reset_requests (username, new_password, status, created_at) VALUES (?, ?, 'pending', ?)", username, newPassword, time.Now().Unix())
+	if err != nil {
+		log.Printf("创建密码重置申请失败: user=%s err=%v", username, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "提交失败，请稍后再试"})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "pending", "message": "重置申请已提交，等待管理员在管理页同意后生效"})
+}
+
+func handleAdminPasswordResets(w http.ResponseWriter, r *http.Request) {
+	if !checkAdminSecret(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	rows, err := db.Query("SELECT id, username, status, created_at, reviewed_at, reviewed_by FROM password_reset_requests ORDER BY id DESC")
+	if err != nil {
+		log.Printf("查询密码重置申请失败: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]PasswordResetRequest{})
+		return
+	}
+	defer rows.Close()
+
+	var list []PasswordResetRequest
+	for rows.Next() {
+		var item PasswordResetRequest
+		if err := rows.Scan(&item.ID, &item.Username, &item.Status, &item.CreatedAt, &item.ReviewedAt, &item.ReviewedBy); err != nil {
+			continue
+		}
+		list = append(list, item)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(list)
+}
+
+func handleAdminReviewPasswordReset(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !checkAdminSecret(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	var req struct {
+		RequestID int64  `json:"request_id"`
+		Status    string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid payload", http.StatusBadRequest)
+		return
+	}
+	if req.RequestID <= 0 {
+		http.Error(w, "request_id invalid", http.StatusBadRequest)
+		return
+	}
+	if req.Status != "approved" && req.Status != "rejected" {
+		http.Error(w, "status invalid", http.StatusBadRequest)
+		return
+	}
+
+	adminUser := "admin"
+	if user, err := getUsernameByToken(getTokenFromHeader(r)); err == nil && user != "" {
+		adminUser = user
+	}
+
+	var item PasswordResetRequest
+	err := db.QueryRow("SELECT id, username, new_password, status FROM password_reset_requests WHERE id = ?", req.RequestID).Scan(&item.ID, &item.Username, &item.NewPassword, &item.Status)
+	if err != nil {
+		http.Error(w, "request not found", http.StatusNotFound)
+		return
+	}
+	if item.Status != "pending" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "该申请已处理"})
+		return
+	}
+
+	now := time.Now().Unix()
+	if req.Status == "approved" {
+		res, err := db.Exec("UPDATE users SET password = ? WHERE username = ?", item.NewPassword, item.Username)
+		if err != nil {
+			log.Printf("批准密码重置失败: request_id=%d err=%v", req.RequestID, err)
+			http.Error(w, "Failed to update password", http.StatusInternalServerError)
+			return
+		}
+		if affected, _ := res.RowsAffected(); affected == 0 {
+			http.Error(w, "user not found", http.StatusNotFound)
+			return
+		}
+		_, _ = db.Exec("DELETE FROM session_tokens WHERE username = ?", item.Username)
+	}
+
+	_, err = db.Exec("UPDATE password_reset_requests SET status = ?, reviewed_at = ?, reviewed_by = ? WHERE id = ?", req.Status, now, adminUser, req.RequestID)
+	if err != nil {
+		log.Printf("更新密码重置申请状态失败: request_id=%d err=%v", req.RequestID, err)
+		http.Error(w, "Failed to update request status", http.StatusInternalServerError)
+		return
+	}
+
+	message := "重置申请已驳回"
+	if req.Status == "approved" {
+		message = "已同意重置，新密码已生效"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "message": message})
 }
 
 func normalizeReportReasons(reasons []string) []string {
@@ -3003,20 +3156,12 @@ func handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-	// 优先尝试数据库验证，如果不存在或不匹配则回退到配置文件中的 adminpassword
-	var dbPwd string
-	err := db.QueryRow("SELECT password FROM users WHERE username = ?", req.Username).Scan(&dbPwd)
-	if err == nil && strings.EqualFold(dbPwd, req.Password) {
-		// 通过数据库认证
-		fmt.Printf("[INFO] admin login: db auth success for user=%s\n", req.Username)
-	} else if strings.EqualFold(req.Password, getAdminPassword()) {
-		// 通过配置文件中的 secret 认证
-		fmt.Printf("[INFO] admin login: fallback secret auth for user=%s\n", req.Username)
-	} else {
+	if !verifyAdminPassword(req.Password) {
 		fmt.Printf("[WARN] admin login: auth failed for user=%s\n", req.Username)
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
+	fmt.Printf("[INFO] admin login: auth success for user=%s\n", req.Username)
 	token := generateToken()
 	_ = saveSessionToken(req.Username, token)
 	w.Header().Set("Content-Type", "application/json")
