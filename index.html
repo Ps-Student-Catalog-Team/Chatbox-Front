@@ -633,11 +633,30 @@
                                 <!-- @提及高亮层 -->
                                 <div id="mentionHighlight" class="absolute top-0 left-0 px-2 md:px-4 py-1.5 md:py-2 text-xs md:text-sm pointer-events-none rounded-xl" style="width: 100%; max-height: 100px; overflow: hidden; font-family: inherit; white-space: pre-wrap; word-wrap: break-word; background: transparent; z-index: 1; line-height: inherit;">
                                 </div>
+                                <div id="quickReplySuggestionPanel" class="hidden fixed z-[80] w-72 rounded-2xl border border-sky-200 bg-white shadow-2xl p-2">
+                                    <div class="flex items-center justify-between px-2 py-1">
+                                        <span class="text-[11px] font-bold text-slate-700">快捷替换</span>
+                                        <span id="quickReplySuggestionMeta" class="text-[10px] text-slate-400">词条</span>
+                                    </div>
+                                    <div id="quickReplySuggestionList" class="mt-2 space-y-1 max-h-40 overflow-y-auto"></div>
+                                </div>
                             </div>
-                            
-                            <button onclick="sendMessage()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 md:px-5 py-1.5 md:py-2 rounded-xl text-xs md:text-sm font-medium transition cursor-pointer shadow-sm">
-                                发送
-                            </button>
+
+                            <div class="flex flex-wrap items-center gap-1">
+                                <button id="themeCustomButton" onclick="toggleThemeCustomizer()" class="hidden rounded-xl border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer" title="自定义主题">
+                                    🎨
+                                </button>
+                                <button onclick="sendMessage()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 md:px-5 py-1.5 md:py-2 rounded-xl text-xs md:text-sm font-medium transition cursor-pointer shadow-sm">
+                                    发送
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="themeCustomizerBar" class="hidden flex flex-wrap items-center gap-2">
+                            <span class="text-[10px] font-semibold text-slate-500">主题</span>
+                            <button class="theme-swatch rounded-full border border-slate-200 px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100 transition cursor-pointer" data-theme="light">默认</button>
+                            <button class="theme-swatch rounded-full border border-slate-200 px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100 transition cursor-pointer" data-theme="cool">云蓝</button>
+                            <button class="theme-swatch rounded-full border border-slate-200 px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100 transition cursor-pointer" data-theme="warm">暖茶</button>
                         </div>
                     </div>
                 </div>
@@ -1830,11 +1849,28 @@
         // 滚动到最新消息
         function scrollToLatestMessage() {
             const box = document.getElementById('chatBox');
-            if (box) {
-                box.scrollTop = box.scrollHeight;
-                clearNewMessageMarks();
-                renderChatBubbles();
+            if (!box) return;
+
+            const from = box.scrollTop || 0;
+            const to = box.scrollHeight;
+            const start = performance.now();
+            const duration = 200;
+
+            function tick(now) {
+                const elapsed = now - start;
+                const progress = Math.min(elapsed / duration, 1);
+                const ease = 1 - Math.pow(1 - progress, 3);
+                box.scrollTop = from + (to - from) * ease;
+                if (progress < 1) {
+                    requestAnimationFrame(tick);
+                } else {
+                    box.scrollTop = to;
+                    clearNewMessageMarks();
+                    renderChatBubbles();
+                }
             }
+
+            requestAnimationFrame(tick);
         }
 
         // 滚动到指定消息（根据 data-message-id）并高亮
@@ -2504,10 +2540,158 @@
         }
 
         function handleMessageInputKeydown(event) {
+            const input = document.getElementById('messageInput');
+            const panel = document.getElementById('quickReplySuggestionPanel');
+            const list = document.getElementById('quickReplySuggestionList');
+
             if (event && event.key === 'Enter') {
+                if (panel && !panel.classList.contains('hidden') && list && list.children.length > 0) {
+                    event.preventDefault();
+                    const selected = list.querySelector('.quick-reply-suggestion.selected');
+                    if (selected) {
+                        applyQuickReplySelection(Number(selected.dataset.index));
+                    }
+                    return;
+                }
                 event.preventDefault();
                 sendMessage();
+                return;
             }
+
+            if (event && event.key === 'Tab') {
+                if (!input || !input.value.trim()) return;
+                const key = input.value.trim().split(/\s+/).pop();
+                const candidates = getQuickReplyCandidates(key);
+                if (candidates && candidates.length) {
+                    event.preventDefault();
+                    openQuickReplySuggestion(key, candidates);
+                }
+                return;
+            }
+
+            if (panel && !panel.classList.contains('hidden')) {
+                if (event && event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    selectQuickReplyNext();
+                    return;
+                }
+                if (event && event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    selectQuickReplyPrev();
+                    return;
+                }
+                if (event && event.key === 'Escape') {
+                    event.preventDefault();
+                    hideQuickReplySuggestion();
+                }
+            }
+        }
+
+        function getQuickReplyCandidates(keyword) {
+            if (!keyword) return [];
+            const exact = quickReplyDictionary[keyword];
+            if (exact && exact.length) return exact;
+            const lower = keyword.toLowerCase();
+            const found = Object.keys(quickReplyDictionary).find(k => k.toLowerCase() === lower);
+            if (found) return quickReplyDictionary[found];
+            return [];
+        }
+
+        function openQuickReplySuggestion(keyword, candidates) {
+            const panel = document.getElementById('quickReplySuggestionPanel');
+            const list = document.getElementById('quickReplySuggestionList');
+            const meta = document.getElementById('quickReplySuggestionMeta');
+            const input = document.getElementById('messageInput');
+            if (!panel || !list || !input) return;
+            if (!candidates || candidates.length === 0) return;
+
+            panel.dataset.keyword = keyword;
+            panel.dataset.candidates = JSON.stringify(candidates);
+            panel.dataset.selected = '0';
+            meta.innerText = keyword;
+
+            list.innerHTML = '';
+            candidates.forEach((c, idx) => {
+                const row = document.createElement('button');
+                row.type = 'button';
+                row.className = 'quick-reply-suggestion w-full text-left rounded-lg px-2 py-1.5 text-[11px] text-slate-700 hover:bg-sky-50 hover:text-sky-700 transition cursor-pointer';
+                if (idx === 0) row.classList.add('selected', 'bg-sky-50', 'text-sky-700');
+                row.dataset.index = String(idx);
+                row.dataset.value = c;
+                row.innerText = c;
+                row.onclick = () => {
+                    applyQuickReplySelection(idx);
+                };
+                list.appendChild(row);
+            });
+
+            const rect = input.getBoundingClientRect();
+            const panelWidth = 288;
+            const panelHeight = Math.min(180, Math.max(120, candidates.length * 34));
+            const left = Math.min(Math.max(rect.left + 2, 8), Math.max(8, window.innerWidth - panelWidth - 12));
+            const top = Math.max(rect.top - panelHeight - 10, 8);
+            panel.style.width = panelWidth + 'px';
+            panel.style.height = panelHeight + 'px';
+            panel.style.left = left + 'px';
+            panel.style.top = top + 'px';
+            panel.classList.remove('hidden');
+        }
+
+        function hideQuickReplySuggestion() {
+            const panel = document.getElementById('quickReplySuggestionPanel');
+            if (panel) panel.classList.add('hidden');
+        }
+
+        function selectQuickReplyNext() {
+            const panel = document.getElementById('quickReplySuggestionPanel');
+            const list = document.getElementById('quickReplySuggestionList');
+            if (!panel || panel.classList.contains('hidden') || !list) return;
+            const rows = Array.from(list.children);
+            if (!rows.length) return;
+            const current = Number(panel.dataset.selected || 0);
+            const next = Math.min(current + 1, rows.length - 1);
+            panel.dataset.selected = String(next);
+            rows.forEach((row, idx) => row.classList.toggle('selected', idx === next));
+        }
+
+        function selectQuickReplyPrev() {
+            const panel = document.getElementById('quickReplySuggestionPanel');
+            const list = document.getElementById('quickReplySuggestionList');
+            if (!panel || panel.classList.contains('hidden') || !list) return;
+            const rows = Array.from(list.children);
+            if (!rows.length) return;
+            const current = Number(panel.dataset.selected || 0);
+            const prev = Math.max(current - 1, 0);
+            panel.dataset.selected = String(prev);
+            rows.forEach((row, idx) => row.classList.toggle('selected', idx === prev));
+        }
+
+        function applyQuickReplySelection(index) {
+            const panel = document.getElementById('quickReplySuggestionPanel');
+            const list = document.getElementById('quickReplySuggestionList');
+            const input = document.getElementById('messageInput');
+            if (!panel || panel.classList.contains('hidden') || !list || !input) return;
+            const rows = Array.from(list.children);
+            const selected = rows[Number(index)] || rows[Number(panel.dataset.selected || 0)] || rows[0];
+            if (!selected) return;
+
+            const keyword = panel.dataset.keyword || '';
+            const value = selected.dataset.value || selected.innerText.trim();
+            const raw = input.value || '';
+            const endKeywordIndex = raw.lastIndexOf(keyword);
+            const keywordAtEnd = endKeywordIndex >= 0 && raw.slice(endKeywordIndex + keyword.length).trim() === '';
+            if (keywordAtEnd) {
+                input.value = raw.slice(0, endKeywordIndex) + value;
+            } else {
+                input.value = value;
+            }
+            updateMentionHighlight();
+            hideQuickReplySuggestion();
+            input.focus();
+        }
+
+        function escapeRegex(s) {
+            return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         }
 
         function triggerImageUpload() {
@@ -3656,6 +3840,13 @@
             { key: 'custom_theme', title: '自定义主题皮肤', short: '聊天背景与主题微调', desc: '启用后为用户提供主题、色彩与背景风格的自定义入口，提升聊天室的个性化体验。' }
         ];
 
+        const quickReplyDictionary = {
+            '你好': ['你好呀！', '你好，很高兴认识你。', '你好，最近怎么样？'],
+            '您好': ['您好！很高兴为您服务。', '您好，欢迎来到这里。', '您好，有什么需要帮忙的吗？'],
+            'hello': ['Hello! Nice to meet you.', 'Hello, what can I do for you?', 'Hello there!'],
+            'hi': ['Hi! Nice to meet you.', 'Hi, I am here.', 'Hi, what’s up?']
+        };
+
         // 扩展状态缓存与同步
         window._extensionsCache = {};
         async function loadExtensionsFromServer() {
@@ -3669,6 +3860,7 @@
                 try { window._extensionsCache = s ? JSON.parse(s) : {}; } catch (ee) { window._extensionsCache = {}; }
             }
             renderExtensionsModal();
+            updateExtensionUIBindings();
             window.dispatchEvent(new CustomEvent('extensions-updated'));
         }
 
@@ -3683,6 +3875,7 @@
                 const updated = await resp.json();
                 window._extensionsCache = updated || {};
                 renderExtensionsModal();
+                updateExtensionUIBindings();
                 window.dispatchEvent(new CustomEvent('extensions-updated'));
             } catch (e) {
                 alert('切换扩展失败');
@@ -3700,6 +3893,68 @@
             const modal = document.getElementById('extensionsModal');
             if (!modal) return;
             closeModalWithAnimation(modal);
+        }
+
+        function updateExtensionUIBindings() {
+            const st = getExtensionsState();
+            const quickWrap = document.getElementById('quickReplyBar');
+            const themeWrap = document.getElementById('themeCustomizerBar');
+            const themeBtn = document.getElementById('themeCustomButton');
+
+            if (quickWrap) {
+                quickWrap.classList.toggle('hidden', !st.quick_replies);
+            }
+            if (themeWrap) {
+                themeWrap.classList.toggle('hidden', !st.custom_theme);
+            }
+            if (themeBtn) {
+                themeBtn.classList.toggle('hidden', !st.custom_theme);
+            }
+
+            if (st.quick_replies) {
+                document.querySelectorAll('#quickReplyBar .quick-reply-chip').forEach(btn => {
+                    btn.onclick = () => {
+                        const input = document.getElementById('messageInput');
+                        if (!input) return;
+                        input.value = btn.dataset.reply || btn.textContent.trim();
+                        input.focus();
+                    };
+                });
+            }
+
+            if (st.custom_theme) {
+                document.querySelectorAll('#themeCustomizerBar .theme-swatch').forEach(btn => {
+                    btn.onclick = () => {
+                        const theme = btn.dataset.theme || 'light';
+                        applyThemeSwatch(theme);
+                    };
+                });
+            }
+        }
+
+        function applyThemeSwatch(theme) {
+            const chatBox = document.getElementById('chatBox');
+            if (!chatBox) return;
+            const map = {
+                light: { chatBg: '#f8fafc', chatText: '#0f172a', side: '#ffffff' },
+                cool: { chatBg: '#e0f2fe', chatText: '#164e63', side: '#eafaff' },
+                warm: { chatBg: '#fff7ed', chatText: '#7c2d12', side: '#ffe4cc' }
+            }
+            const chosen = map[theme] || map.light;
+            chatBox.style.backgroundColor = chosen.chatBg;
+            chatBox.style.color = chosen.chatText;
+            chatBox.style.borderRadius = '14px';
+            const inputArea = document.getElementById('messageInputArea');
+            if (inputArea) {
+                inputArea.style.backgroundColor = chosen.side;
+            }
+            localStorage.setItem('lanchat_custom_theme', theme);
+        }
+
+        function toggleThemeCustomizer() {
+            const bar = document.getElementById('themeCustomizerBar');
+            if (!bar) return;
+            bar.classList.toggle('hidden');
         }
 
         function renderExtensionsModal() {
