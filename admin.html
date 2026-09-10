@@ -732,7 +732,9 @@
         // ---- 扩展管理 (localStorage 同步) ----
         const availableExtensions = [
             { key: 'ai_chat', title: 'AI 聊天', short: '基于模型的智能聊天', desc: '启用后可在系统中使用 AI 助手进行对话或代发消息。' },
-            { key: 'secure_ws', title: '加密 Websocks 模式', short: '端到端消息加密的传输模式', desc: '启用后通过约定密钥对消息进行加密，需客户端支持。' }
+            { key: 'secure_ws', title: '加密 Websocks 模式', short: '端到端消息加密的传输模式', desc: '启用后通过约定密钥对消息进行加密，需客户端支持。' },
+            { key: 'quick_replies', title: '快捷回复模板', short: '沉浸式聊天高频语句模板', desc: '启用后可在消息输入框旁选择预设模板，提高群聊和私聊的高频回答效率。' },
+            { key: 'custom_theme', title: '自定义主题皮肤', short: '聊天背景与主题微调', desc: '启用后为用户提供主题、色彩与背景风格的自定义入口，提升聊天室的个性化体验。' }
         ];
         let currentSelectedExtension = null;
 

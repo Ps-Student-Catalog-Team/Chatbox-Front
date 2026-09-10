@@ -3651,7 +3651,9 @@
         // ---- 扩展功能（与 admin.html 同步） ----
         const availableExtensions = [
             { key: 'ai_chat', title: 'AI 聊天', short: '基于模型的智能聊天', desc: '启用后可在系统中使用 AI 助手进行对话或代发消息。' },
-            { key: 'secure_ws', title: '加密 Websocks 模式', short: '端到端消息加密的传输模式', desc: '启用后通过约定密钥对消息进行加密，需客户端支持。' }
+            { key: 'secure_ws', title: '加密 Websocks 模式', short: '端到端消息加密的传输模式', desc: '启用后通过约定密钥对消息进行加密，需客户端支持。' },
+            { key: 'quick_replies', title: '快捷回复模板', short: '沉浸式聊天高频语句模板', desc: '启用后可在消息输入框旁选择预设模板，提高群聊和私聊的高频回答效率。' },
+            { key: 'custom_theme', title: '自定义主题皮肤', short: '聊天背景与主题微调', desc: '启用后为用户提供主题、色彩与背景风格的自定义入口，提升聊天室的个性化体验。' }
         ];
 
         // 扩展状态缓存与同步
@@ -3771,9 +3773,35 @@
 
         window.addEventListener('storage', (e) => { if (e.key === 'lanchat_extensions') { loadExtensionsFromServer(); } });
 
+        // 自定义 JS 扩展脚本发现与自动加载：把 custom-extensions/ 下的文件作为便捷入口
+        async function loadCustomExtensionsFromServer() {
+            try {
+                const resp = await fetch('/api/custom/extensions');
+                if (!resp.ok) throw new Error('fetch custom extensions failed');
+                const data = await resp.json();
+                const items = Array.isArray(data.items) ? data.items : [];
+                for (const item of items) {
+                    if (!item || !item.name || !item.path) continue;
+                    const scriptId = 'custom-extension-script-' + item.name;
+                    if (document.getElementById(scriptId)) continue;
+                    const script = document.createElement('script');
+                    script.id = scriptId;
+                    script.src = item.path;
+                    script.async = false;
+                    script.setAttribute('data-custom-extension-name', item.name);
+                    document.body.appendChild(script);
+                }
+            } catch (e) {
+                console.warn('[CustomExtensions] 自动发现脚本失败:', e);
+            }
+        }
+
         // 侧边栏扩展入口管理
         // 在页面加载时从后端加载扩展状态并同步侧边栏
-        window.addEventListener('DOMContentLoaded', () => { loadExtensionsFromServer(); });
+        window.addEventListener('DOMContentLoaded', () => {
+            loadExtensionsFromServer();
+            loadCustomExtensionsFromServer();
+        });
 
 
     </script>

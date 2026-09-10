@@ -101,6 +101,9 @@ func main() {
 	if err := os.MkdirAll("./uploads/private", 0755); err != nil {
 		log.Fatalf("无法创建私有上传目录: %v", err)
 	}
+	if err := os.MkdirAll("./custom-extensions", 0755); err != nil {
+		log.Fatalf("无法创建自定义扩展目录: %v", err)
+	}
 
 	// 确保 photos/uploads 结构存在，用于用户可见的背景/字体存放
 	if err := os.MkdirAll("./photos/uploads/userpublic", 0755); err != nil {
@@ -114,6 +117,7 @@ func main() {
 	staticFiles := http.FileServer(http.Dir("./"))
 	http.Handle("/", noCacheStaticHandler(staticFiles))
 	http.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("./uploads"))))
+	http.Handle("/custom-extensions/", http.StripPrefix("/custom-extensions/", http.FileServer(http.Dir("./custom-extensions"))))
 	http.Handle("/favicon.ico", http.FileServer(http.Dir("./photos/ico")))
 	// serve user-uploaded public/private assets (backgrounds/fonts)
 	// 静态托管改为受保护处理：公共目录仍然可公开访问，私有目录需要 token 验证
@@ -149,6 +153,7 @@ func main() {
 	http.HandleFunc("/api/admin/broadcast", handleAdminBroadcast)
 	http.HandleFunc("/api/admin/change-password", handleAdminChangePassword)
 	http.HandleFunc("/api/extensions", handleGetExtensions)
+	http.HandleFunc("/api/custom/extensions", handleCustomExtensions)
 	http.HandleFunc("/api/admin/extensions", handleAdminSetExtensions)
 	http.HandleFunc("/api/ai/chat", handleAIChat)
 	http.HandleFunc("/api/admin/ai/config", handleAdminSetAIConfig)
@@ -771,6 +776,8 @@ func initDB() {
 	// 默认扩展列表与初始值
 	_, _ = db.Exec("INSERT OR IGNORE INTO extensions (key, enabled) VALUES ('ai_chat', 0)")
 	_, _ = db.Exec("INSERT OR IGNORE INTO extensions (key, enabled) VALUES ('secure_ws', 0)")
+	_, _ = db.Exec("INSERT OR IGNORE INTO extensions (key, enabled) VALUES ('quick_replies', 0)")
+	_, _ = db.Exec("INSERT OR IGNORE INTO extensions (key, enabled) VALUES ('custom_theme', 0)")
 	// AI 配置表（保存 provider 与 keys 的 JSON）
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS ai_config (
 		id TEXT PRIMARY KEY,
@@ -1864,6 +1871,44 @@ func broadcastWithdraw(targetType, targetID string, messageID int64, sender stri
 			}
 		}
 	}
+}
+
+// 公共接口：列出自定义扩展脚本入口，方便用户主动写 JS 扩展
+func handleCustomExtensions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	entries, err := os.ReadDir("./custom-extensions")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	list := make([]map[string]string, 0)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(strings.ToLower(name), ".js") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		item := map[string]string{
+			"name":        name,
+			"path":        "/custom-extensions/" + name,
+			"description": "自定义扩展脚本",
+			"updated_at":  info.ModTime().Format(time.RFC3339),
+		}
+		list = append(list, item)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"items": list,
+	})
 }
 
 // 公共接口：获取扩展状态（允许匿名获取）
