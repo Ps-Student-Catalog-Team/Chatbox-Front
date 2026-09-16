@@ -2,11 +2,8 @@ package main
 
 import (
 	"bytes"
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/rand"
 	"database/sql"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -159,7 +156,6 @@ func main() {
 	http.HandleFunc("/api/admin/ai/config", handleAdminSetAIConfig)
 	http.HandleFunc("/api/ai/config", handleGetAIConfig)
 	http.HandleFunc("/api/admin/login", handleAdminLogin)
-	http.HandleFunc("/api/admin/secure_ws", handleAdminSecureWS)
 	http.HandleFunc("/api/admin/refresh-token", handleRefreshToken)
 
 	port := 40001
@@ -775,9 +771,9 @@ func initDB() {
 	}
 	// 默认扩展列表与初始值
 	_, _ = db.Exec("INSERT OR IGNORE INTO extensions (key, enabled) VALUES ('ai_chat', 0)")
-	_, _ = db.Exec("INSERT OR IGNORE INTO extensions (key, enabled) VALUES ('secure_ws', 0)")
 	_, _ = db.Exec("INSERT OR IGNORE INTO extensions (key, enabled) VALUES ('quick_replies', 0)")
 	_, _ = db.Exec("INSERT OR IGNORE INTO extensions (key, enabled) VALUES ('custom_theme', 0)")
+	_, _ = db.Exec("DELETE FROM extensions WHERE key = 'secure_ws'")
 	// AI 配置表（保存 provider 与 keys 的 JSON）
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS ai_config (
 		id TEXT PRIMARY KEY,
@@ -789,15 +785,7 @@ func initDB() {
 	// 初始化默认配置
 	_, _ = db.Exec("INSERT OR IGNORE INTO ai_config (id, value) VALUES ('default', '{}')")
 
-	// secure_ws key storage
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS secure_ws (
-		id TEXT PRIMARY KEY,
-		value TEXT
-	);`)
-	if err != nil {
-		log.Fatalf("创建secure_ws表失败: %v", err)
-	}
-	_, _ = db.Exec("INSERT OR IGNORE INTO secure_ws (id, value) VALUES ('default', '')")
+	_, _ = db.Exec("DROP TABLE IF EXISTS secure_ws")
 }
 
 // AI 配置操作
@@ -825,67 +813,6 @@ func setAIConfigInDB(cfg map[string]interface{}) error {
 		broadcastAIConfigUpdate()
 	}
 	return err
-}
-
-// secure_ws key operations
-func getSecureWSKeyFromDB() (string, error) {
-	var raw string
-	err := db.QueryRow("SELECT value FROM secure_ws WHERE id = 'default'").Scan(&raw)
-	if err != nil {
-		return "", err
-	}
-	return raw, nil
-}
-
-func setSecureWSKeyInDB(val string) error {
-	_, err := db.Exec("INSERT OR REPLACE INTO secure_ws (id, value) VALUES ('default', ?)", val)
-	if err == nil {
-		// broadcast optional update
-		payload := map[string]interface{}{"type": "secure_ws_update", "configured": val != ""}
-		stateMutex.RLock()
-		for _, conn := range clients {
-			_ = conn.WriteJSON(payload)
-		}
-		stateMutex.RUnlock()
-	}
-	return err
-}
-
-// decrypt secure payload (expects base64 of nonce(12)+ciphertext)
-func decryptSecurePayload(b64 string, keyStr string) (map[string]interface{}, error) {
-	if b64 == "" || keyStr == "" {
-		return nil, fmt.Errorf("empty payload or key")
-	}
-	data, err := base64.StdEncoding.DecodeString(b64)
-	if err != nil {
-		return nil, err
-	}
-	k := []byte(keyStr)
-	if len(k) != 16 && len(k) != 24 && len(k) != 32 {
-		return nil, fmt.Errorf("invalid key length")
-	}
-	if len(data) < 12 {
-		return nil, fmt.Errorf("payload too short")
-	}
-	nonce := data[:12]
-	ct := data[12:]
-	block, err := aes.NewCipher(k)
-	if err != nil {
-		return nil, err
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-	plain, err := gcm.Open(nil, nonce, ct, nil)
-	if err != nil {
-		return nil, err
-	}
-	var out map[string]interface{}
-	if err := json.Unmarshal(plain, &out); err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func broadcastAIConfigUpdate() {
@@ -1062,17 +989,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		var payload map[string]interface{}
 		if err := json.Unmarshal(msgBytes, &payload); err != nil {
 			continue
-		}
-
-		// 如果启用了 secure_ws 并且为加密消息，尝试解密（PoC）
-		if secureEnabled, _ := getExtensionsFromDB(); secureEnabled["secure_ws"] {
-			if sp, ok := payload["secure_payload"].(string); ok && sp != "" {
-				if key, err := getSecureWSKeyFromDB(); err == nil && key != "" {
-					if decrypted, err := decryptSecurePayload(sp, key); err == nil {
-						payload = decrypted
-					}
-				}
-			}
 		}
 
 		action, _ := payload["action"].(string)
@@ -1988,46 +1904,6 @@ func handleAdminSetAIConfig(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-// 管理接口：设置/获取 secure_ws key（仅管理员）
-func handleAdminSecureWS(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		if !checkAdminSecret(r) {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		key, err := getSecureWSKeyFromDB()
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"key": key})
-		return
-	}
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-	raw, _ := io.ReadAll(r.Body)
-	r.Body = io.NopCloser(bytes.NewReader(raw))
-	if !checkAdminSecret(r) {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-	var body map[string]string
-	if err := json.Unmarshal(raw, &body); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	k := body["key"]
-	if err := setSecureWSKeyInDB(k); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-}
-
 // 刷新 token（管理员或用户可调用以续期自己的 token）
 func handleRefreshToken(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -2103,6 +1979,10 @@ func handleAdminSetExtensions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.Key == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if body.Key == "secure_ws" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}

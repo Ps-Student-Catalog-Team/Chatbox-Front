@@ -268,18 +268,6 @@
                                             <button onclick="loadAIConfig()" class="ml-2 rounded-2xl bg-slate-100 px-4 py-2 text-sm">载入</button>
                                         </div>
                                     </div>
-                                <div id="secureWSPanel" class="mt-6 border-t pt-4" style="display:none;">
-                                    <h5 class="text-sm font-semibold">Secure WS 密钥（PoC）</h5>
-                                    <p class="text-xs text-slate-500 mt-1">用于 WebSocket 加密的对称密钥（16/24/32 字节）。仅管理员可见。</p>
-                                    <div class="mt-3">
-                                        <label class="text-xs">对称密钥（Base64 或原文）</label>
-                                        <input id="secureWSKeyInput" class="w-full rounded-md border px-3 py-2 text-sm" placeholder="16/24/32 字节对称密钥（可直接粘贴 base64 或原文）">
-                                        <div class="pt-2">
-                                            <button onclick="saveSecureWSKey()" class="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">保存密钥</button>
-                                            <button onclick="loadSecureWSKey()" class="ml-2 rounded-2xl bg-slate-100 px-4 py-2 text-sm">载入</button>
-                                        </div>
-                                    </div>
-                                </div>
                                 </div>
                             </div>
                         </div>
@@ -732,7 +720,6 @@
         // ---- 扩展管理 (localStorage 同步) ----
         const availableExtensions = [
             { key: 'ai_chat', title: 'AI 聊天', short: '基于模型的智能聊天', desc: '启用后可在系统中使用 AI 助手进行对话或代发消息。' },
-            { key: 'secure_ws', title: '加密 Websocks 模式', short: '端到端消息加密的传输模式', desc: '启用后通过约定密钥对消息进行加密，需客户端支持。' },
             { key: 'quick_replies', title: '快捷回复模板', short: '沉浸式聊天高频语句模板', desc: '启用后可在消息输入框旁选择预设模板，提高群聊和私聊的高频回答效率。' },
             { key: 'custom_theme', title: '自定义主题皮肤', short: '聊天背景与主题微调', desc: '启用后为用户提供主题、色彩与背景风格的自定义入口，提升聊天室的个性化体验。' }
         ];
@@ -872,19 +859,11 @@
             }
             // 控制 AI 配置面板是否显示（仅 ai_chat）
             const aiPanel = document.getElementById('aiConfigPanel');
-            const securePanel = document.getElementById('secureWSPanel');
             if (aiPanel) {
                 if (key === 'ai_chat') {
                     aiPanel.style.display = '';
                 } else {
                     aiPanel.style.display = 'none';
-                }
-            }
-            if (securePanel) {
-                if (key === 'secure_ws') {
-                    securePanel.style.display = '';
-                } else {
-                    securePanel.style.display = 'none';
                 }
             }
         }
@@ -977,26 +956,6 @@
 
         function getProvider() { const v = document.getElementById('aiProviderValue'); return v ? v.value : ''; }
 
-        async function loadSecureWSKey() {
-            if (!currentAdminToken) { showToast('请先登录管理员', true); return; }
-            try {
-                const resp = await fetch('/api/admin/secure_ws', { headers: { 'Authorization': 'Bearer ' + currentAdminToken } });
-                if (!resp.ok) throw new Error('failed');
-                const data = await resp.json();
-                document.getElementById('secureWSKeyInput').value = data.key || '';
-                showToast('已载入 Secure WS 密钥');
-            } catch (e) { showToast('载入密钥失败', true); }
-        }
-
-        async function saveSecureWSKey() {
-            if (!currentAdminToken) { showToast('请先登录管理员', true); return; }
-            const key = document.getElementById('secureWSKeyInput').value.trim();
-            try {
-                const resp = await fetch('/api/admin/secure_ws', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ admin_token: currentAdminToken, key }) });
-                if (!resp.ok) throw new Error('save failed');
-                showToast('Secure WS 密钥已保存');
-            } catch (e) { showToast('保存密钥失败', true); }
-        }
     </script>
 </body>
 </html>
